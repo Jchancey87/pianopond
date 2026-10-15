@@ -1,0 +1,29 @@
+# Option A (simplest): plain HTTP on your LAN.
+#   cd deploy && docker compose up -d --build      -> http://<server-ip>:8080
+# Option B (recommended): HTTPS via Caddy so microphone / MIDI / "install as app" work.
+#   docker compose --profile https up -d --build   -> https://<server-ip> (see README for trusting the cert)
+services:
+  piano:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: axie-piano
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+
+  caddy:
+    profiles: ["https"]
+    image: caddy:2-alpine
+    container_name: axie-piano-https
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - piano
+
+volumes:
+  caddy_data:

@@ -1,0 +1,6 @@
+# Replace piano.home.lan with a hostname your tablet can resolve (router DNS / Pi-hole), or use the server's IP.
+# "tls internal" makes Caddy issue its own certificate; install Caddy's root CA on the tablet once (see README).
+piano.home.lan, :443 {
+    tls internal
+    reverse_proxy piano:80
+}

@@ -1,0 +1,17 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE directories
+.vscode/
+.idea/
+
+# Local certificate / secret files
+*.crt
+*.key
+*.pem
+
+# Local node / temporary
+node_modules/
+.npm/

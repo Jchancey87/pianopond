@@ -1,0 +1,14 @@
+{
+  "name": "Axie's Piano Pond",
+  "short_name": "Axie Piano",
+  "description": "Learn piano with Axie the axolotl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#86d7ea",
+  "theme_color": "#5bb6d6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
