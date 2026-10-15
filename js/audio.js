@@ -1,72 +1,108 @@
 /* Audio: a soft synth piano, sound effects, MIDI keyboard input, and optional microphone pitch detection. */
 window.AX = window.AX || {};
 AX.audio = (function () {
-  let ctx = null, master = null;
+  let ctx = null, master = null, room = null, hammer = null;
+  const voices = new Set();
+  const MAX_VOICES = 24;
   const vol = () => AX.store.get().settings.volume;
 
   function ensure() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      ctx = new AC();
+      ctx = new AC({ latencyHint: 'interactive' });
       const comp = ctx.createDynamicsCompressor();
-      master = ctx.createGain();
-      master.gain.value = vol();
+      comp.threshold.value = -12; comp.knee.value = 12; comp.ratio.value = 3;
+      master = ctx.createGain(); master.gain.value = vol();
       master.connect(comp); comp.connect(ctx.destination);
+      // A small, shared soundboard/room tail. Generated locally, so it works offline.
+      room = ctx.createConvolver();
+      const impulse = ctx.createBuffer(2, Math.ceil(ctx.sampleRate * 0.65), ctx.sampleRate);
+      for (let channel = 0; channel < 2; channel++) {
+        const data = impulse.getChannelData(channel);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12));
+      }
+      room.buffer = impulse;
+      const wet = ctx.createGain(); wet.gain.value = 0.09;
+      room.connect(wet); wet.connect(master);
+      hammer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.018), ctx.sampleRate);
+      const data = hammer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.003));
     }
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     return ctx;
   }
-  function setVolume(v) { if (master) master.gain.value = v; }
+  function setVolume(v) { if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.015); }
   const now = () => (ctx ? ctx.currentTime : 0);
 
-  // Additive "piano-ish" voice. opt: {when, vel, gain, dur}. Without dur the note rings and decays like a real piano.
+  // Decaying partials, a quiet hammer attack and velocity-dependent brightness.
+  // No sample downloads; one shared room and at most 24 held/scheduled voices.
   function noteOn(midi, opt) {
     opt = opt || {};
     const c = ensure(); if (!c) return { release() {} };
+    if (voices.size >= MAX_VOICES) voices.values().next().value.release(true);
     const t0 = Math.max(c.currentTime, opt.when || 0);
-    const vel = opt.vel == null ? 0.8 : opt.vel;
-    const g = opt.gain == null ? 1 : opt.gain;
+    const vel = Math.max(0.01, Math.min(1, opt.vel == null ? 0.8 : opt.vel));
+    const gain = Math.max(0, opt.gain == null ? 1 : opt.gain);
     const f = AX.music.freq(midi);
-    const out = c.createGain(); out.gain.value = 0.0001;
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass';
-    lp.frequency.value = Math.min(12000, f * 6 + 1200); lp.Q.value = 0.4;
-    lp.connect(out); out.connect(master);
-    const oscs = [];
-    [[1, 1], [2, 0.5], [3, 0.28], [4, 0.14], [5, 0.08], [6, 0.04]].forEach(([n, a]) => {
-      const o = c.createOscillator(); o.type = 'sine';
-      o.frequency.value = f * n * (1 + 0.0004 * n * n);
-      const pg = c.createGain(); pg.gain.value = a;
-      o.connect(pg); pg.connect(lp); o.start(t0); oscs.push(o);
-    });
-    const peak = 0.22 * vel * g;
-    let end;
-    out.gain.setValueAtTime(0.0001, t0);
-    out.gain.linearRampToValueAtTime(peak, t0 + 0.008);
-    if (opt.dur) {
-      out.gain.exponentialRampToValueAtTime(peak * 0.55, t0 + Math.max(0.05, opt.dur * 0.75));
-      end = t0 + opt.dur + 0.15;
-      out.gain.exponentialRampToValueAtTime(0.0003, end);
-    } else {
-      const dec = Math.max(1.4, 4.2 - (midi - 48) * 0.045);
-      out.gain.exponentialRampToValueAtTime(peak * 0.4, t0 + 0.35);
-      end = t0 + dec;
-      out.gain.exponentialRampToValueAtTime(0.0003, end);
-    }
-    oscs.forEach(o => o.stop(end + 0.1));
-    let released = false;
-    return {
-      release() {
-        if (released) return; released = true;
-        const t = c.currentTime;
-        try {
-          out.gain.cancelScheduledValues(t);
-          out.gain.setValueAtTime(Math.max(out.gain.value, 0.0003), t);
-          out.gain.exponentialRampToValueAtTime(0.0003, t + 0.22);
-        } catch (e) { /* ignore */ }
-        oscs.forEach(o => { try { o.stop(t + 0.3); } catch (e) { /* ignore */ } });
+    const decay = Math.max(1.1, Math.min(6, 4.8 * Math.pow(2, (48 - midi) / 36)));
+    const duration = opt.dur == null ? decay : Math.max(0.03, opt.dur);
+    const releaseTime = Math.max(0.10, Math.min(0.25, 0.22 - (midi - 48) * 0.001));
+    const end = t0 + duration + releaseTime;
+    const out = c.createGain(), lp = c.createBiquadFilter(), pan = c.createStereoPanner();
+    lp.type = 'lowpass'; lp.Q.value = 0.45;
+    lp.frequency.setValueAtTime(Math.min(c.sampleRate * 0.45, f * (3 + vel * 7) + 600), t0);
+    lp.frequency.exponentialRampToValueAtTime(Math.min(c.sampleRate * 0.4, f * 2.5 + 400), t0 + decay);
+    pan.pan.value = Math.max(-0.35, Math.min(0.35, (midi - 60) / 90));
+    lp.connect(out); out.connect(pan); pan.connect(master); pan.connect(room);
+    const peak = Math.max(0.0001, 0.19 * Math.pow(vel, 1.5) * gain);
+    const attack = 0.004 + (1 - vel) * 0.006;
+    const levelAt = t => {
+      const age = Math.max(0, t - t0);
+      if (age < attack) return 0.0001 + (peak - 0.0001) * age / attack;
+      if (age > duration) {
+        const heldLevel = Math.max(0.0001, peak * Math.exp(-3.5 * (duration - attack) / decay));
+        return heldLevel * Math.pow(0.0001 / heldLevel, Math.min(1, (age - duration) / releaseTime));
       }
+      return Math.max(0.0001, peak * Math.exp(-3.5 * (age - attack) / decay));
     };
+    out.gain.setValueAtTime(0.0001, t0);
+    out.gain.linearRampToValueAtTime(peak, t0 + attack);
+    out.gain.exponentialRampToValueAtTime(levelAt(t0 + duration), t0 + duration);
+    out.gain.exponentialRampToValueAtTime(0.0001, end);
+    const sources = [], nodes = [lp, out, pan];
+    const partials = [1, 0.48, 0.23, 0.12, 0.065, 0.03];
+    partials.forEach((amplitude, i) => {
+      const harmonic = i + 1;
+      const frequency = f * harmonic * Math.sqrt(1 + 0.000035 * i * i);
+      if (frequency >= c.sampleRate * 0.45) return;
+      const osc = c.createOscillator(), envelope = c.createGain();
+      osc.frequency.value = frequency;
+      const a = amplitude * (i ? 0.45 + 0.55 * vel : 1);
+      envelope.gain.setValueAtTime(a, t0);
+      envelope.gain.exponentialRampToValueAtTime(Math.max(0.0001, a * 0.015), t0 + decay / (1 + i * 0.65));
+      osc.connect(envelope); envelope.connect(lp); osc.start(t0); osc.stop(end + 0.03);
+      sources.push(osc); nodes.push(envelope);
+    });
+    const strike = c.createBufferSource(), strikeGain = c.createGain();
+    strike.buffer = hammer; strikeGain.gain.value = 0.09 * vel * vel;
+    strike.connect(strikeGain); strikeGain.connect(lp); strike.start(t0);
+    sources.push(strike); nodes.push(strikeGain);
+    let released = false;
+    const voice = { release(steal) {
+      if (released) return; released = true; voices.delete(voice);
+      const t = c.currentTime;
+      out.gain.cancelScheduledValues(t);
+      out.gain.setValueAtTime(t < t0 ? 0.0001 : levelAt(t), t);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + (steal ? 0.025 : releaseTime));
+      sources.forEach(source => { try { source.stop(t + (steal ? 0.03 : releaseTime + 0.03)); } catch {} });
+    } };
+    sources[0].onended = () => {
+      voices.delete(voice);
+      sources.forEach(source => source.disconnect()); nodes.forEach(node => node.disconnect());
+    };
+    voices.add(voice);
+    return voice;
   }
 
   function tone(f, dur, o) {
@@ -81,6 +117,7 @@ AX.audio = (function () {
     g.gain.linearRampToValueAtTime(peak, t0 + 0.01);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     osc.connect(g); g.connect(master); osc.start(t0); osc.stop(t0 + dur + 0.05);
+    osc.onended = () => { osc.disconnect(); g.disconnect(); };
   }
   const sfx = {
     chime() { [72, 76, 79, 84].forEach((m, i) => tone(AX.music.freq(m), 0.4, { when: now() + i * 0.09, type: 'triangle', gain: 0.14 })); },
@@ -112,7 +149,7 @@ AX.input = (function () {
           inp.onmidimessage = (e) => {
             const [st, n, v] = e.data; const cmd = st & 0xf0;
             if (!api.active) return;
-            if (cmd === 0x90 && v > 0) api.active.external(n, 'midi');
+            if (cmd === 0x90 && v > 0) api.active.external(n, 'midi', v / 127);
             else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) api.active.externalOff(n);
           };
         });

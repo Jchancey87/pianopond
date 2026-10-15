@@ -183,6 +183,38 @@ async function check(name, fn) { await fn(); console.log('PASS ' + name); }
     for (const songId of songs) await go('song', { songId });
     for (const name of ['map', 'songbook', 'closet', 'stickers', 'parent']) await go(name);
   });
+  await check('Little parts guide Listen → Sing → Play without awarding whole-song progress', async () => {
+    const before = await evaluate('({ pearls: AX.store.get().pearls, sung: AX.store.get().flags.sung, plays: AX.store.get().songs.hcb.plays })');
+    await evaluate('window.originalTempo = AX.songs.byId.hcb.tempo; AX.songs.byId.hcb.tempo = 1200');
+    await go('song', { songId: 'hcb' });
+    await evaluate('document.querySelector(".phrase-select").value = "0"; document.querySelector(".phrase-select").dispatchEvent(new Event("change"))');
+    assert.equal(await evaluate('document.querySelector(".song-progress progress").max'), 3);
+    await click('.go'); await until('!document.querySelector(".phrase-finish").hidden');
+    await click('[data-act="phrase-next"]'); await click('.go');
+    await until('!document.querySelector(".phrase-finish").hidden');
+    await click('[data-act="phrase-next"]'); await click('.go');
+    await evaluate('AX.songs.byId.hcb.notes.slice(0, 3).forEach(n => AX.input.active.onNote(n.m, "touch"))');
+    await until('!document.querySelector(".phrase-finish").hidden');
+    await screenshot('phrase');
+    assert.equal(await evaluate('document.querySelector("#overlay").classList.contains("open")'), false);
+    assert.deepEqual(await evaluate('({ pearls: AX.store.get().pearls, sung: AX.store.get().flags.sung, plays: AX.store.get().songs.hcb.plays })'), before);
+    await click('.go');
+    assert.equal(await evaluate('document.querySelector(".song-progress progress").value'), 0);
+    await evaluate('AX.songs.byId.hcb.notes.slice(0, 3).forEach(n => AX.input.active.onNote(n.m, "touch"))');
+    await until('!document.querySelector(".phrase-finish").hidden');
+    await click('[data-act="phrase-next"]');
+    assert.equal(await evaluate('document.querySelector(".phrase-select").value'), '1');
+    await evaluate(`(() => {
+      const select = document.querySelector('.phrase-select'); select.value = String(select.options.length - 2); select.dispatchEvent(new Event('change'));
+    })()`);
+    await click('[data-mode="play"]'); await click('.go');
+    await evaluate('AX.songs.byId.hcb.notes.slice(-AX.songs.byId.hcb.lines.at(-1)).forEach(n => AX.input.active.onNote(n.m, "touch"))');
+    await until('!document.querySelector(".phrase-finish").hidden');
+    await click('[data-act="phrase-next"]');
+    assert.equal(await evaluate('document.querySelector(".phrase-select").value'), '-1');
+    assert.equal(await evaluate('document.querySelector(".song-progress progress").max'), 17);
+    await evaluate('AX.songs.byId.hcb.tempo = window.originalTempo');
+  });
   await check('Free Play story prompts and safe recording controls', async () => {
     await go('freeplay');
     const title = await evaluate('document.querySelector(".story-title").textContent');
@@ -194,10 +226,91 @@ async function check(name, fn) { await fn(); console.log('PASS ' + name); }
     assert.equal(await evaluate('document.querySelector("#play").disabled'), true);
     await click('#rec'); await screenshot('freeplay');
   });
+  await check('Recordings preserve chord lengths and velocity; names, backup and reload persist', async () => {
+    await go('freeplay'); await click('#rec');
+    await evaluate('AX.input.active.external(60, "midi", 0.3); AX.input.active.external(64, "midi", 0.85)');
+    await wait(120); await evaluate('AX.input.active.externalOff(60)');
+    await wait(230); await evaluate('AX.input.active.externalOff(64)');
+    await click('#rec');
+    const notes = await evaluate('AX.store.get().compositions.at(-1).notes');
+    assert.equal(notes.length, 2);
+    assert.equal(notes[0].vel, 0.3); assert.equal(notes[1].vel, 0.85);
+    assert.ok(notes[0].d >= 100 && notes[1].d > notes[0].d + 150);
+    assert.ok(notes[1].t < notes[0].t + notes[0].d, 'chord overlaps');
+    await click('#name-song');
+    await evaluate('document.querySelector("#song-name").value = \'Moon <b>pond</b>\'');
+    await click('.modal .primary');
+    await click('#my-music');
+    assert.equal(await evaluate('document.querySelector(".composition h3").textContent'), 'Moon <b>pond</b>');
+    assert.equal(await evaluate('document.querySelector(".composition h3 b")'), null);
+    await screenshot('my-music');
+    await click('[data-action="play"]');
+    assert.equal(await evaluate('document.querySelector("[data-action=play]").textContent'), '⏹ Stop');
+    await until('document.querySelector("[data-action=play]").textContent === "▶ Listen"');
+    const saved = await evaluate('AX.store.exportJSON()');
+    await evaluate(`AX.store.importJSON(${JSON.stringify(saved)})`);
+    assert.equal(await evaluate('AX.store.get().compositions.at(-1).title'), 'Moon <b>pond</b>');
+    await send('Page.reload'); await wait(350); await until('!!window.AX?.app');
+    await go('mymusic');
+    assert.equal(await evaluate('document.querySelector(".composition h3").textContent'), 'Moon <b>pond</b>');
+    await click('[data-action="delete"]'); await click('.modal .btn');
+    assert.equal(await evaluate('document.querySelector(".composition h3").textContent'), 'Moon <b>pond</b>');
+    await click('[data-action="rename"]');
+    await evaluate('document.querySelector("#song-name").value = "Moon Pond"');
+    await click('.modal .primary');
+    assert.equal(await evaluate('document.querySelector(".composition h3").textContent'), 'Moon Pond');
+    // The older, throwaway recording can be removed without affecting the named one.
+    await click('.composition:last-child [data-action="delete"]'); await click('.modal .danger');
+    assert.equal(await evaluate('AX.store.get().compositions.length'), 1);
+  });
+  await check('Storage errors and invalid backups leave existing songs intact', async () => {
+    const outcome = await evaluate(`(() => {
+      const before = AX.store.exportJSON();
+      const bad = JSON.parse(before); bad.compositions[0].notes[0].d = -10;
+      let rejected = false;
+      try { AX.store.importJSON(JSON.stringify(bad)); } catch { rejected = true; }
+      const invalidUnchanged = AX.store.exportJSON() === before;
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = () => { throw new DOMException('full', 'QuotaExceededError'); };
+      let fullRejected = false;
+      try { AX.store.renameComposition(AX.store.get().compositions[0].id, 'Should not save'); } catch { fullRejected = true; }
+      Storage.prototype.setItem = original;
+      return { rejected, invalidUnchanged, fullRejected, fullUnchanged: AX.store.exportJSON() === before };
+    })()`);
+    assert.deepEqual(outcome, { rejected: true, invalidUnchanged: true, fullRejected: true, fullUnchanged: true });
+  });
+  await check('Piano renders finite stereo audio with velocity dynamics and a fading tail', async () => {
+    const result = await evaluate(`(async () => {
+      const source = await (await fetch('js/audio.js?v=2.3')).text();
+      async function render(velocity) {
+        const context = new OfflineAudioContext(2, 44100 * 3, 44100);
+        context.resume = () => Promise.resolve();
+        const ax = { store: { get: () => ({ settings: { volume: 0.8 } }) }, music: AX.music };
+        const win = { AX: ax, AudioContext: function () { return context; } };
+        new Function('window', 'AX', 'navigator', source)(win, ax, {});
+        ax.audio.noteOn(60, { vel: velocity, dur: 0.7 });
+        const audio = await context.startRendering(), samples = audio.getChannelData(0);
+        let energy = 0, tail = 0, peak = 0, finite = true;
+        for (let i = 0; i < samples.length; i++) {
+          finite = finite && Number.isFinite(samples[i]); peak = Math.max(peak, Math.abs(samples[i]));
+          if (i < 22050) energy += samples[i] * samples[i];
+          if (i > 88200) tail += samples[i] * samples[i];
+        }
+        return { rms: Math.sqrt(energy / 22050), tail: Math.sqrt(tail / 44100), peak, finite, channels: audio.numberOfChannels };
+      }
+      return { soft: await render(0.3), loud: await render(0.9) };
+    })()`);
+    assert.ok(result.soft.finite && result.loud.finite);
+    assert.equal(result.loud.channels, 2);
+    assert.ok(result.soft.rms > 0.001);
+    assert.ok(result.loud.rms > result.soft.rms * 2);
+    assert.ok(result.loud.peak < 0.99 && result.loud.tail < 0.0001);
+    console.log('Audio measurements: ' + JSON.stringify(result));
+  });
   await check('Tablet and phone layouts fit horizontally', async () => {
     for (const [width, height] of [[768, 1024], [390, 844]]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-      for (const name of ['home', 'divePlan', 'freeplay', 'parent', 'song']) {
+      for (const name of ['home', 'divePlan', 'freeplay', 'mymusic', 'parent', 'song']) {
         await go(name, name === 'song' ? { songId: 'hcb' } : {});
         const overflow = await evaluate('document.querySelector("#screen").scrollWidth - document.querySelector("#screen").clientWidth');
         assert.ok(overflow <= 2, name + ' overflow at ' + width + ': ' + overflow);
@@ -212,6 +325,10 @@ async function check(name, fn) { await fn(); console.log('PASS ' + name); }
     assert.ok(await evaluate('!!document.querySelector(".home-banner progress")'));
     await go('freeplay');
     assert.ok(await evaluate('!!document.querySelector(".story-card")'));
+    await go('mymusic');
+    assert.equal(await evaluate('document.querySelector(".composition h3").textContent'), 'Moon Pond');
+    await click('[data-action="play"]');
+    await until('document.querySelector("[data-action=play]").textContent === "▶ Listen"');
   });
   assert.deepEqual(errors, [], 'Browser exceptions');
   console.log('ALL BROWSER CHECKS PASSED. Screenshots: ' + path.join(os.tmpdir(), 'axie-*.png'));

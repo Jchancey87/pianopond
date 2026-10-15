@@ -2,6 +2,16 @@
 
 See [the app walkthrough and improvements](APP_REVIEW.md) for the latest child-focused changes, verification, and follow-up ideas. Run the dependency-free Chrome walkthrough with `node deploy/ui-smoke.cjs` (Node 22+; set `CHROME_PATH` if needed).
 
+### New in v2.3: little parts and her own music
+
+- **Song practice:** choose a little part from the Practice menu, then Listen → Sing → Play. Repeat a part or continue to the next one. Playing the whole song still earns its stars; part practice does not complete a lesson or recital.
+- **Free Play:** tap Record, play, then Stop & save. Use Name my song to give it a title. My Music is available from Home and Free Play, with playback, rename, and confirmed removal.
+- **Recordings:** preserve key timing, held notes, chords, and MIDI velocity. These are saved note performances, not microphone recordings. Axie's accompaniment is excluded. Recording stops and saves when leaving Free Play or hiding the page; an interrupted browser process cannot be guaranteed to save an unfinished recording.
+- **Offline storage:** up to 50 songs, each limited to 2 minutes or 1,500 notes, subject to available browser storage. Songs stay on this device and are included in Grown-ups Corner's JSON backup. Save failures are shown; an unsaved take remains available during the current visit so it can be retried.
+- **Piano sound:** decaying harmonics, a quiet hammer attack, stereo positioning, a short room tail, and velocity-dependent volume and brightness. The sound is synthesized locally; no sound packs, network requests, or new runtime dependencies are required.
+
+Additional boundary checks: `node deploy/composer-tests.cjs`. Browser tests include phrase rewards, recording lengths, persistence, offline playback, and rendering audio with `OfflineAudioContext`. Audio rendering verifies signal behavior, not a listening assessment on the child's device.
+
 > **A Conservatory-Inspired, Gamified Piano Academy for Young Beginners**  
 > *Target Student: Ayana (Age 8, Complete Beginner to Intermediate)*  
 > *Mascot & Guide: Axie the Axolotl*  

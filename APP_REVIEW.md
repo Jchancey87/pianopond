@@ -2,6 +2,8 @@
 
 Reviewed October 15, 2026, with an eight-year-old beginner in mind.
 
+Follow-up v2.3 implements the first two priorities below and improves the piano sound. The original walkthrough records the earlier review; the new behavior is described in the [README](README.md#new-in-v23-little-parts-and-her-own-music).
+
 The strongest parts are the friendly pond setting, Axie's presence beside the activity, generous cards, and patient song practice. The changes keep that visual language and focus on helping Ayana know what to do next, experiment with sound, and take breaks comfortably.
 
 ## Walkthrough
@@ -36,10 +38,10 @@ Physical MIDI keyboards, acoustic microphone recognition, and Safari/iPad audio 
 
 ## Best next improvements
 
-1. **Keep her own compositions.** Save a named recording and give it a small “My music” card. Current recordings last only while Free Play stays open and use a fixed duration for each played note. Capturing note releases would make playback sound more like her performance.
-2. **Practice one small phrase.** Offer a two-bar loop with Listen → Hum → Play. This would be particularly useful as the songs get longer. It needs a deliberate definition of phrase boundaries and how phrase practice earns progress.
+1. **Keep her own compositions — implemented in v2.3.** My Music stores named performances with note timing, duration, overlapping notes, and MIDI velocity. Recordings survive reloads and are included in backups. Playback, rename, removal confirmation, storage-failure handling, and old-backup compatibility are tested.
+2. **Practice one small phrase — implemented in v2.3.** The Practice selector uses each song's existing lyric/musical line boundaries, rather than splitting held notes to enforce two bars. Each part has Listen → Sing → Play, repeat, next part, and a final return to the whole song. Whole-song stars, singing rewards, and lesson completion remain exclusive to whole performances; recital screens keep whole-song practice.
 3. **Make advanced lessons easier to read.** The later curriculum still uses terms such as “counterpoint linearity” and “conservatory precision.” Short demonstrations and child-facing explanations would help. The score renderer also needs ties and proper handling of notes spanning barlines before claiming full engraving accuracy. The solfège helper currently maps pitch names directly; it is not a complete movable-Do system.
-4. **Strengthen progress backups.** Import currently merges parsed JSON without validating the full schema. Validate the entire candidate before replacing progress, and show a preview of the student and saved progress. Persistent dive checkpoints would also allow resuming after closing the browser; current dive continuity is only within the same visit.
-5. **Make real-piano expression visible.** MIDI currently discards key velocity and does not handle sustain pedal messages. A soft/loud musical game would be a useful reason to add those capabilities, with a physical-keyboard test alongside it.
+4. **Strengthen progress backups — partly implemented in v2.3.** Restore now validates the basic profile structure and saved performances before committing, and storage failures leave the old state intact. A restore preview and validation of every legacy progress/settings field remain future work. Persistent dive checkpoints would also allow resuming after closing the browser; current dive continuity is only within the same visit.
+5. **Make real-piano expression visible — partly implemented in v2.3.** MIDI velocity now controls piano volume and brightness and is preserved in recordings. Sustain pedal messages and a soft/loud teaching game remain future work, with physical-keyboard testing needed.
 
 Practice time remains an estimate of time spent on visible activity screens, rather than a measurement of continuous playing. A quiet learner reading or thinking can still be practicing; inactivity detection should be introduced carefully.

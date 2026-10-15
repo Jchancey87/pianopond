@@ -1,23 +1,24 @@
 /* Offline cache so the app keeps working on the tablet even if the server is off. */
-const VERSION = 'axie-piano-v2.2';
+const VERSION = 'axie-piano-v2.3';
 const FILES = [
   './',
   'index.html',
-  'css/style.css?v=2.2',
-  'manifest.webmanifest?v=2.2',
-  'icon.svg?v=2.2',
-  'js/store.js?v=2.2',
-  'js/music.js?v=2.2',
-  'js/audio.js?v=2.2',
-  'js/axolotl.js?v=2.2',
-  'js/piano.js?v=2.2',
-  'js/staff.js?v=2.2',
-  'js/songs.js?v=2.2',
-  'js/curriculum.js?v=2.2',
-  'js/ui.js?v=2.2',
-  'js/games.js?v=2.2',
-  'js/songplayer.js?v=2.2',
-  'js/app.js?v=2.2'
+  'css/style.css?v=2.3',
+  'manifest.webmanifest?v=2.3',
+  'icon.svg?v=2.3',
+  'js/store.js?v=2.3',
+  'js/music.js?v=2.3',
+  'js/audio.js?v=2.3',
+  'js/axolotl.js?v=2.3',
+  'js/piano.js?v=2.3',
+  'js/staff.js?v=2.3',
+  'js/songs.js?v=2.3',
+  'js/curriculum.js?v=2.3',
+  'js/ui.js?v=2.3',
+  'js/games.js?v=2.3',
+  'js/songplayer.js?v=2.3',
+  'js/composer.js?v=2.3',
+  'js/app.js?v=2.3'
 ];
 
 self.addEventListener('install', e => {

@@ -5,6 +5,7 @@ AX.Piano = function (container, opt) {
   opt = Object.assign({ from: 60, to: 76, labels: 'names', sound: true }, opt || {});
   const self = this;
   self.onNote = null;
+  self.onNoteOff = null;
   self.opt = opt;
 
   const whites = [];
@@ -67,46 +68,61 @@ AX.Piano = function (container, opt) {
   self.playNote = function (m, o) {
     o = o || {}; down(m);
     if (opt.sound && !o.silent) {
-      const voice = AX.audio.noteOn(m, { dur: o.dur || 0.5, gain: o.gain == null ? 1 : o.gain, vel: 0.75 });
+      const voice = AX.audio.noteOn(m, { dur: o.dur || 0.5, gain: o.gain == null ? 1 : o.gain, vel: o.vel == null ? 0.75 : o.vel });
       demoVoices.add(voice);
       setTimeout(() => demoVoices.delete(voice), (o.dur || 0.5) * 1000 + 300);
     }
     setTimeout(() => up(m), Math.max(120, (o.dur || 0.5) * 1000));
   };
   // MIDI keyboard / microphone events
-  self.external = function (m, src) {
+  self.external = function (m, src, velocity) {
     if (src === 'mic') { self.flash(m, 'ghost', 350); if (self.onNote) self.onNote(m, 'mic'); return; }
-    down(m); if (opt.sound) midiVoices[m] = AX.audio.noteOn(m, { vel: 0.8 });
-    if (self.onNote) self.onNote(m, src);
+    if (midiVoices[m]) self.externalOff(m);
+    const vel = velocity == null ? 0.8 : velocity;
+    down(m); midiVoices[m] = opt.sound ? AX.audio.noteOn(m, { vel }) : { release() {} };
+    if (self.onNote) self.onNote(m, src, { id: 'midi:' + m, vel });
   };
-  self.externalOff = function (m) { up(m); if (midiVoices[m]) { midiVoices[m].release(); delete midiVoices[m]; } };
+  self.externalOff = function (m) {
+    up(m);
+    if (midiVoices[m]) {
+      midiVoices[m].release(); delete midiVoices[m];
+      if (self.onNoteOff) self.onNoteOff(m, 'midi', { id: 'midi:' + m });
+    }
+  };
 
   el.addEventListener('pointerdown', (e) => {
     const k = e.target.closest('.key'); if (!k) return;
     e.preventDefault(); AX.audio.ensure();
     const m = +k.dataset.midi; down(m);
     held[e.pointerId] = { m, v: opt.sound ? AX.audio.noteOn(m, { vel: 0.8 }) : null };
-    if (self.onNote) self.onNote(m, 'touch');
+    if (el.setPointerCapture && e.isTrusted) el.setPointerCapture(e.pointerId);
+    if (self.onNote) self.onNote(m, 'touch', { id: 'touch:' + e.pointerId, vel: 0.8 });
   });
   const release = (e) => {
     const h = held[e.pointerId]; if (!h) return;
     delete held[e.pointerId]; up(h.m); if (h.v) h.v.release();
+    if (self.onNoteOff) self.onNoteOff(h.m, 'touch', { id: 'touch:' + e.pointerId });
   };
   el.addEventListener('pointerup', release);
   el.addEventListener('pointercancel', release);
   window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 
   self.setLabels(opt.labels);
   AX.input.active = self;
   self.silence = function () {
     demoVoices.forEach(v => v.release()); demoVoices.clear();
-    Object.keys(midiVoices).forEach(m => { midiVoices[m].release(); delete midiVoices[m]; });
-    Object.keys(held).forEach(id => { if (held[id].v) held[id].v.release(); delete held[id]; });
+    Object.keys(midiVoices).forEach(m => self.externalOff(+m));
+    Object.keys(held).forEach(id => release({ pointerId: id }));
     Object.keys(keys).forEach(up);
   };
+  const blur = () => self.silence();
+  window.addEventListener('blur', blur);
   self.destroy = function () {
     window.removeEventListener('pointerup', release);
+    window.removeEventListener('pointercancel', release);
+    window.removeEventListener('blur', blur);
     if (AX.input.active === self) AX.input.active = null;
     self.silence();
   };

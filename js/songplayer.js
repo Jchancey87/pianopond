@@ -10,7 +10,11 @@ AX.SongPlayer = function (root, song, opts) {
   let viewMode = S.viewMode || 'sheet'; // 'sheet' or 'highway'
   let speed = 1, lyrMode = S.lyrics || 'words', showFingers = opts.perform ? false : S.fingers !== false;
   let running = false, raf = 0, dead = false, idx = 0, mistakes = 0, wrong = 0, nextIdx = 0, t0 = 0, scroll = -4, curTok = -1, lastBeat = -99, countText = '', done = false;
-  const notes = song.notes, n = notes.length;
+  const wholeSong = song;
+  const parts = [];
+  let offset = 0;
+  song.lines.forEach(length => { parts.push({ from: offset, to: offset + length }); offset += length; });
+  let part = -1, notes = song.notes, n = notes.length;
   const beatsPerBar = (song.timeSig || [4, 4])[0];
   let paused = false, pausedAt = 0;
   let hintUntil = 0;
@@ -32,6 +36,8 @@ AX.SongPlayer = function (root, song, opts) {
       <button class="chip" data-act="mic">🎤 Real piano</button>
       </div></details>
     </div>
+    <div class="phrase-bar" ${opts.perform ? 'hidden' : ''}><label>Practice <select class="phrase-select" aria-label="Choose whole song or a little part"><option value="-1">Whole song</option>${parts.map((p, i) => `<option value="${i}">Part ${i + 1} · ${p.to - p.from} notes</option>`).join('')}</select></label><span class="phrase-help">Try a little part: listen, sing, then play.</span></div>
+    <div class="phrase-finish" hidden><span role="status"></span><button class="chip" data-act="phrase-next"></button></div>
     <div class="sp-transport"><button class="chip" data-act="pause" disabled>⏸ Pause</button><button class="chip" data-act="restart">↻ Start over</button><button class="chip" data-act="hint" hidden>👂 Hear this note</button><label class="song-progress"><span></span><progress max="${n}" value="0" aria-label="Song progress"></progress></label></div>
     <div class="sp-lyrics"></div>
     <div class="sp-stage">
@@ -140,6 +146,7 @@ AX.SongPlayer = function (root, song, opts) {
   function reset() {
     stopAll(); idx = 0; mistakes = 0; wrong = 0; nextIdx = 0; curTok = -1; scroll = mode === 'play' ? notes[0].start : -beatsPerBar; shownLine = -1;
     goBtn.style.display = ''; goBtn.textContent = mode === 'play' ? "▶ Let's play!" : "▶ Let's go!";
+    $('.phrase-finish').hidden = true;
     renderLyrics(true); updateScore(); updateUI(); drawHighway();
     const t = {
       listen: `Listen closely to <b>${song.title}</b>! Follow the notes on the staff. 🎼`,
@@ -152,6 +159,7 @@ AX.SongPlayer = function (root, song, opts) {
   function updateUI() {
     $('.activity.song').dataset.paused = String(paused);
     const count = mode === 'play' ? idx : nextIdx;
+    $('.song-progress progress').max = n;
     $('.song-progress progress').value = count;
     $('.song-progress span').textContent = `${count} / ${n} notes`;
     $('[data-act="pause"]').disabled = !running && !paused;
@@ -225,11 +233,12 @@ AX.SongPlayer = function (root, song, opts) {
     running = false; AX.Axie.setMood('happy', 2500); AX.Axie.bounce(); piano.clearMarks();
     if (mode === 'sing') {
       AX.Axie.say('Great singing! 🎤✨ Now select <b>Play</b> to try it with your fingers!');
-      AX.audio.sfx.chime(); if (opts.onSing) opts.onSing();
+      AX.audio.sfx.chime(); if (part < 0 && opts.onSing) opts.onSing();
     } else {
       AX.Axie.say('Nice listening! Now tap <b>Sing</b> or <b>Play</b>! 🎶');
     }
     goBtn.style.display = ''; goBtn.textContent = '↻ Play Again';
+    if (part >= 0) showPartFinish();
     updateUI();
   }
   const hints = ['Check the sheet music and glowing key!', 'Take your time — accuracy builds speed. 🐢', 'Look at the staff line and finger number.', 'Almost there! Try the glowing key.'];
@@ -253,10 +262,38 @@ AX.SongPlayer = function (root, song, opts) {
     const allow = Math.max(2, Math.round(n * 0.08));
     const stars = mistakes <= allow ? 3 : mistakes <= allow * 3 ? 2 : 1;
     piano.clearMarks(); goBtn.style.display = ''; goBtn.textContent = '↻ Play Again';
+    if (part >= 0) { showPartFinish(); AX.Axie.cheer('You played this little part! Every try helps. 🌟'); return; }
     if (opts.onDone) opts.onDone(stars, { mistakes });
   }
 
+  function choosePart(value) {
+    part = value;
+    if (part < 0) song = wholeSong;
+    else {
+      const range = parts[part], selected = wholeSong.notes.slice(range.from, range.to);
+      const start = selected[0].start;
+      song = { ...wholeSong, lines: [selected.length], notes: selected.map((nt, i) => ({ ...nt, idx: i, line: 0, start: nt.start - start })) };
+    }
+    notes = song.notes; n = notes.length;
+    $('.phrase-select').value = String(part);
+    $('.phrase-help').textContent = part < 0 ? 'Try a little part: listen, sing, then play.' : `Part ${part + 1} of ${parts.length} · Whole-song stars come later. Take your time!`;
+    reset();
+  }
+  function showPartFinish() {
+    $('.phrase-finish').hidden = false;
+    $('.phrase-finish span').textContent = mode === 'listen' ? 'Heard it? Now sing it with Axie.' : mode === 'sing' ? 'Now try it with your fingers.' : `Part ${part + 1} complete! Repeat it or move on.`;
+    $('[data-act="phrase-next"]').textContent = mode === 'listen' ? '🎤 Sing this part' : mode === 'sing' ? '🎹 Play this part' : part + 1 < parts.length ? 'Next part ➡' : '🌟 Try the whole song';
+    goBtn.textContent = '↻ Repeat this part';
+  }
+
   /* ---- wiring ---- */
+  $('.phrase-select').addEventListener('change', e => { choosePart(+e.target.value); });
+  $('[data-act="phrase-next"]').addEventListener('click', () => {
+    if (mode === 'listen') { mode = 'sing'; reset(); }
+    else if (mode === 'sing') { mode = 'play'; reset(); }
+    else if (part + 1 < parts.length) { mode = 'listen'; choosePart(part + 1); }
+    else { mode = 'play'; choosePart(-1); }
+  });
   root.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; reset(); }));
   root.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
     viewMode = b.dataset.view; S.viewMode = viewMode; AX.store.save(); updateUI(); updateScore(); drawHighway();
@@ -274,7 +311,7 @@ AX.SongPlayer = function (root, song, opts) {
     if (AX.input.micOn) { AX.input.stopMic(); } else { const r = await AX.input.startMic(); AX.ui.toast(r.msg); }
     updateUI();
   });
-  goBtn.addEventListener('click', () => { if (goBtn.textContent.indexOf('Again') >= 0 || running) reset(); start(); });
+  goBtn.addEventListener('click', () => { if (done || nextIdx >= n || running) reset(); start(); });
   $('[data-act="pause"]').addEventListener('click', () => paused ? resume() : pause());
   $('[data-act="restart"]').addEventListener('click', reset);
   $('[data-act="hint"]').addEventListener('click', () => {

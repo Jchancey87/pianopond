@@ -134,6 +134,7 @@
       <button class="tile" data-go="map"><span class="ti">🗺️</span><b>Adventure Map</b><small>24 musical places to explore</small></button>
       <button class="tile" data-go="songbook"><span class="ti">🎼</span><b>Songbook</b><small>${AX.songs.list.length} Pieces · Sheet Music & Sing</small></button>
       <button class="tile" data-go="freeplay"><span class="ti">🎹</span><b>Free Play</b><small>Make up a tiny musical story</small></button>
+      <button class="tile" data-go="mymusic"><span class="ti">🎵</span><b>My Music</b><small>${st.compositions.length} songs made by you</small></button>
       <button class="tile" data-go="closet"><span class="ti">👒</span><b>Axie's Closet</b><small>Dress up Axie with pearls</small></button>
       <button class="tile" data-go="stickers"><span class="ti">🏅</span><b>Stickers</b><small>${st.stickers.length} / ${STICKERS.length} Unlocked</small></button>
     </div><button class="gear" id="gear" aria-label="Grown-ups">⚙️</button>`;
@@ -220,61 +221,12 @@
   };
 
   screens.freeplay = (root) => {
-    setTitle('Free Play'); AX.Axie.say('You are the composer! Try a story idea, or play anything you like. There are no wrong notes here. 🎹');
-    root.innerHTML = `<div class="activity song"><div class="sp-bar"><div class="seg lbls"><button data-l="none">No labels</button><button data-l="c">Cs</button><button data-l="names">A B C</button><button data-l="solfege">Do Re Mi</button></div>
-      <button class="chip" id="cantus">🎻 Play with Axie</button>
-      <button class="chip" id="rec">⏺ Record</button><button class="chip" id="play" disabled>▶ Play it back</button></div>
-      <div class="free-stage"><div class="story-card"><span class="story-emoji" aria-hidden="true"></span><h2 class="story-title"></h2><p class="story-prompt"></p><button class="btn small" id="story-next">✨ Another idea</button><small>Your music, your rules. Try recording your story!</small></div></div><div class="sp-piano"></div></div>`;
-    const stories = [
-      ['🐟', 'A little fish says hello', 'Play three notes for “hel-lo, friend!” Then answer with three different notes.'],
-      ['🌧️', 'Raindrops on the pond', 'Try a few high notes like tiny raindrops. Leave quiet spaces between them.'],
-      ['🐢', 'Turtle and butterfly', 'Make a slow tune for a turtle. Now play it faster for a butterfly!'],
-      ['🌙', 'Axie’s sleepy song', 'Make a gentle tune with C, D and E. Finish on C and let it rest.'],
-      ['🏔️', 'Up the bubble mountain', 'Let your tune climb higher, then float back down. Where is its highest note?']
-    ];
-    let story = 0;
-    const showStory = () => { const [emoji, title, prompt] = stories[story]; $('.story-emoji', root).textContent = emoji; $('.story-title', root).textContent = title; $('.story-prompt', root).textContent = prompt; };
-    $('#story-next', root).addEventListener('click', () => { story = (story + 1) % stories.length; showStory(); });
-    showStory();
-    const piano = new AX.Piano($('.sp-piano', root), { from: 48, to: 84, labels: 'c' });
-    let rec = false, tape = [], t0 = 0, timers = [], lastBounce = 0;
-    let cantusOn = false, cantusTimer = null, cantusStep = 0;
-    const bassline = [48, 45, 41, 43]; // C3, A2, F2, G2 (Boulanger 4-measure walking bassline)
-    function playCantusLoop() {
-      if (!cantusOn) return;
-      const m = bassline[cantusStep % bassline.length];
-      cantusStep++;
-      piano.playNote(m, { dur: 1.4, gain: 0.65 });
-      cantusTimer = setTimeout(playCantusLoop, 1600);
-    }
-    const setL = (m) => { piano.setLabels(m); root.querySelectorAll('[data-l]').forEach(b => b.classList.toggle('on', b.dataset.l === m)); };
-    root.querySelectorAll('[data-l]').forEach(b => b.addEventListener('click', () => setL(b.dataset.l))); setL('c');
-    piano.onNote = (m) => {
-      if (rec) tape.push([m, performance.now() - t0]);
-      const t = performance.now(); if (t - lastBounce > 400) { lastBounce = t; AX.Axie.bounce(); AX.Axie.setMood('happy', 900); }
-    };
-    $('#cantus', root).addEventListener('click', () => {
-      cantusOn = !cantusOn;
-      $('#cantus', root).classList.toggle('on', cantusOn);
-      if (cantusOn) {
-        cantusStep = 0;
-        AX.Axie.say("I'll play the low notes. You make up a tune above them! Try the white keys and listen to our music together. 🎻✨");
-        playCantusLoop();
-      } else {
-        clearTimeout(cantusTimer);
-        AX.Axie.say("Nice playing! Try another melody whenever you like. 🎹");
-      }
-    });
-    $('#rec', root).addEventListener('click', () => {
-      rec = !rec; $('#rec', root).textContent = rec ? '⏹ Stop' : '⏺ Record'; $('#rec', root).classList.toggle('on', rec);
-      if (rec) { timers.forEach(clearTimeout); timers = []; $('#play', root).disabled = true; tape = []; t0 = performance.now(); AX.Axie.say('Recording... play your song! 🎙️'); }
-      else { $('#play', root).disabled = !tape.length; if (tape.length) AX.Axie.say('Press <b>Play it back</b> and I\'ll play your song! 🎶'); }
-    });
-    $('#play', root).addEventListener('click', () => {
-      timers.forEach(clearTimeout); timers = []; AX.Axie.say('What a beautiful song! 🎵'); AX.Axie.setMood('sing', (tape[tape.length - 1][1]) + 800);
-      tape.forEach(([m, t]) => timers.push(setTimeout(() => piano.playNote(m, { dur: 0.6 }), t)));
-    });
-    return () => { clearTimeout(cantusTimer); timers.forEach(clearTimeout); piano.destroy(); };
+    setTitle('Free Play'); AX.Axie.say('You are the composer! Play a story, then save it in your own songbook. 🎹');
+    return AX.composer.freeplay(root, () => go('mymusic'));
+  };
+  screens.mymusic = (root) => {
+    setTitle('My Music'); AX.Axie.say('Every song here was made by you! Pick one to hear it again. 🎵');
+    return AX.composer.library(root, () => go('freeplay'));
   };
 
   screens.closet = (root, p) => {
@@ -414,7 +366,7 @@
         <div class="row"><button class="btn small" id="midi">🎹 Connect MIDI keyboard</button><button class="btn small" id="mic">🎤 Test real-piano listening</button></div>
         <small>MIDI and microphone need the page served over HTTPS (see README).</small>
       </section>
-      <section class="card"><h3>Backup progress</h3><div class="row"><button class="btn small" id="exp">⬇ Download backup</button><button class="btn small" id="imp">⬆ Restore backup</button><button class="btn small danger" id="rst">Reset everything</button></div><input type="file" id="file" accept=".json" hidden></section>
+      <section class="card"><h3>Backup progress &amp; My Music</h3><div class="row"><button class="btn small" id="exp">⬇ Download backup</button><button class="btn small" id="imp">⬆ Restore backup</button><button class="btn small danger" id="rst">Reset everything</button></div><input type="file" id="file" accept=".json" hidden></section>
       <section class="card tips"><h3>Practice buddy tips</h3><ul>
         <li>Sit with her for the first few weeks - 5 minutes of your attention is gold.</li>
         <li>Watch her hands: curved fingers (bubble hands), loose wrists, feet flat on the floor or footstool.</li>
@@ -453,7 +405,7 @@
   if (hash[0] === 'dive') go('divePlan');
   else if (hash[0] === 'step') { const l = AX.lessons.find(x => x.steps.some(s => s.id === hash[1])); if (l) go('step', { lessonId: l.id, stepId: hash[1], back: { name: 'home' } }); }
   else if (hash[0] === 'song' && AX.songs.byId[hash[1]]) go('song', { songId: hash[1], back: { name: 'home' } });
-  else if (screens[hash[0]] && ['map', 'songbook', 'freeplay', 'closet', 'stickers'].includes(hash[0])) go(hash[0]);
+  else if (screens[hash[0]] && ['map', 'songbook', 'freeplay', 'closet', 'stickers', 'mymusic'].includes(hash[0])) go(hash[0]);
   else if (S.get().firstRun) firstRun();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').then(reg => {
