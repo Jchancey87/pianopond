@@ -7,6 +7,14 @@
 window.AX = window.AX || {};
 
 AX.warmups = {
+  pond: {
+    title: 'Ready, steady, splash!',
+    items: [
+      ['🪑', 'Sit comfortably, with your feet resting on the floor or a stool.'],
+      ['🫧', 'Let your shoulders relax. Wiggle your fingers, then make a soft, round bubble with each hand.'],
+      ['🎤', 'Sing a tiny tune, then clap its rhythm. Your ears and hands are ready!']
+    ]
+  },
   default: {
     title: "Concert Pianist Pre-Flight Check",
     items: [

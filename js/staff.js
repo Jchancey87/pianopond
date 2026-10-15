@@ -96,6 +96,7 @@ AX.staff = (function () {
     // Measure tracking
     let currentBeatCount = 0;
     let measureIndex = 1;
+    const accidentals = new Map();
 
     // Draw notes
     notes.forEach((nt, i) => {
@@ -107,11 +108,21 @@ AX.staff = (function () {
 
       // Check if measure bar line should be placed before this note (if it crossed a bar)
       if (currentBeatCount > 0 && currentBeatCount % beatsPerMeasure === 0) {
+        accidentals.clear();
         const barX = x - noteSpacing * 0.45;
         s += `<line x1="${barX}" x2="${barX}" y1="${yOf(0)}" y2="${yOf(8)}" stroke="#64748b" stroke-width="2"/>`;
         s += `<text x="${barX + 6}" y="${yOf(8) - 6}" font-size="11" font-weight="700" fill="#94a3b8">${++measureIndex}</text>`;
       }
       currentBeatCount += nt.beats;
+
+      // With no key signature, show each sharp and cancel it when the same
+      // staff position returns to a natural within this measure.
+      const sharp = M.isBlack(nt.m);
+      const previousSharp = accidentals.get(pos) || false;
+      if (sharp !== previousSharp) {
+        s += `<text class="score-accidental" x="${x - 24}" y="${y + 6}" font-size="22" fill="#1e293b">${sharp ? '♯' : '♮'}</text>`;
+      }
+      accidentals.set(pos, sharp);
 
       // Ledger lines
       for (let p = -2; p >= pos; p -= 2) s += `<line x1="${x - 16}" x2="${x + 16}" y1="${yOf(p)}" y2="${yOf(p)}" stroke="#475569" stroke-width="2"/>`;

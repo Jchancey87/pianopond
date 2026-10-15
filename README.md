@@ -1,5 +1,7 @@
 # 🦎 Axie's Piano Academy (The "Little Boulanger" Edition)
 
+See [the app walkthrough and improvements](APP_REVIEW.md) for the latest child-focused changes, verification, and follow-up ideas. Run the dependency-free Chrome walkthrough with `node deploy/ui-smoke.cjs` (Node 22+; set `CHROME_PATH` if needed).
+
 > **A Conservatory-Inspired, Gamified Piano Academy for Young Beginners**  
 > *Target Student: Ayana (Age 8, Complete Beginner to Intermediate)*  
 > *Mascot & Guide: Axie the Axolotl*  

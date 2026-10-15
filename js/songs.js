@@ -211,7 +211,7 @@ window.AX = window.AX || {};
       notes: 'C4 D4 E4 F4 G4 F4 E4 D4 C4 E4 D4 F4 E4 D4 C4',
       beats: '1 1 1 1 2 1 1 1 2 1 1 1 1 1 2',
       fingers: '1 2 3 4 5 4 3 2 1 3 2 4 3 2 1',
-      lyrics: 'Step up step down sing- ing voice Hear the steps re- joice and sing',
+      lyrics: 'Step up step up hold step down step rest Sing a lit- tle tune home',
       lines: [5, 4, 6]
     }),
 
@@ -222,7 +222,7 @@ window.AX = window.AX || {};
       notes: 'D4 F#4 A4 F#4 D4 F#4 A4 F#4 D4 E4 F#4 G4 A4 A4 A4 D4 F#4 A4 F#4 D4',
       beats: '1 1 1 1 1 1 1 1 1 1 1 1 2 1 1 1 1 1 1 4',
       fingers: '1 2 4 2 1 2 4 2 1 2 3 4 5 5 5 1 2 4 2 1',
-      lyrics: 'From the grand note- book of An- na Mag- da- le- na Bach Hear the bag- pipe dance!',
+      lyrics: 'From the grand note- book of An- na Mag- da- le- na Bach Hear the bag- pipes sing and dance!',
       lines: [4, 4, 7, 5]
     }),
 
@@ -233,7 +233,7 @@ window.AX = window.AX || {};
       notes: 'C4 E4 G4 C5 B4 A4 G4 F4 E4 G4 C4 D4 E4 D4 C4',
       beats: '1 1 1 2 1 1 2 1 1 1 1 1 2 1 3',
       fingers: '1 2 3 5 4 3 2 1 1 3 1 2 3 2 1',
-      lyrics: 'Gen- tle bree- zes sing a long sweet song Mel- o- dy of child- hood days',
+      lyrics: 'Gen- tle bree- zes sing a sweet song Mel- o- dy of child- hood days',
       lines: [4, 3, 4, 4]
     }),
 
@@ -244,7 +244,7 @@ window.AX = window.AX || {};
       notes: 'C4 E4 G4 C5 G4 E4 C4 D4 G4 D4 B3 G3 C4',
       beats: '1 1 1 2 1 1 2 1 1 1 1 2 3',
       fingers: '1 2 3 5 3 2 1 2 5 2 1 1 1',
-      lyrics: 'Bright and spar- kling cla- ssi- cal so- na- ti- na tune!',
+      lyrics: 'Bright and spar- kling cla- ssi- cal so- na- ti- na sings home!',
       lines: [4, 3, 3, 3]
     }),
 
@@ -255,7 +255,7 @@ window.AX = window.AX || {};
       notes: 'C4 E4 G4 C5 G4 E4 C4 E4 G4 C5 G4 E4 B3 D4 G4 B4 G4 D4 C4',
       beats: '0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 2',
       fingers: '1 2 3 5 3 2 1 2 3 5 3 2 1 2 4 5 4 2 1',
-      lyrics: 'Flow- ing bro- ken chords in the beau- ti- ful Ba- roque style of Bach Little Pre- lude',
+      lyrics: 'Flow- ing bro- ken chords in the beau- ti- ful Ba- roque style of Bach Lit- tle Pre- lude',
       lines: [6, 6, 6, 1]
     })
   ];
@@ -269,8 +269,8 @@ window.AX = window.AX || {};
     copy.emoji = '🤚';
     copy.tip = 'Left hand mastery! Pinky (5) on Bass C, thumb (1) on Bass G.';
     copy.notes.forEach(n => { n.m -= 12; n.f = 6 - n.f; });
-    copy.from = 48;
-    copy.to = 67;
+    copy.from = src.from - 12;
+    copy.to = src.to - 12;
     copy.lowest -= 12;
     copy.highest -= 12;
     return copy;

@@ -216,4 +216,63 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .cadence-card { cursor: pointer; transition: transform .08s; }
 .cadence-card:active { transform: translateY(3px); }
 #cantus.on { background: var(--teal); color: #fff; animation: pulse 1.5s infinite; }
-@media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; } }
+/* Small guidance additions use the existing pond palette and rounded cards. */
+.badge-title small { display: block; margin-top: 3px; color: #567; font-size: 13px; }
+progress { accent-color: var(--teal-d); height: 9px; border: 0; border-radius: 999px; overflow: hidden; background: #dceef1; }
+progress::-webkit-progress-bar { background: #dceef1; border-radius: 999px; }
+progress::-webkit-progress-value { background: var(--teal-d); border-radius: 999px; }
+progress::-moz-progress-bar { background: var(--teal-d); border-radius: 999px; }
+.badge-title progress { display: block; width: 100%; margin-top: 5px; }
+.dive-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; padding: 8px; }
+.dive-choices .card { display: flex; flex-direction: column; align-items: flex-start; }
+.dive-choices p { margin: 0; }
+.dive-choices ol { padding-left: 24px; line-height: 1.7; flex: 1; }
+.dive-choices .btn { width: 100%; }
+.choice-emoji { font-size: 44px; }
+.dive-reassurance { text-align: center; padding: 0 16px; }
+.story-card { text-align: center; background: var(--card); border-radius: 24px; padding: 14px 20px; max-width: 520px; margin: 8px; }
+.story-emoji { font-size: 38px; }
+.story-card h2 { margin: 2px 0 6px; font-size: 23px; }
+.story-card p { margin: 6px 0 12px; font-size: 18px; line-height: 1.4; }
+.story-card small { display: block; margin-top: 10px; color: #567; }
+.free-stage { min-height: 0; overflow: auto; }
+.sp-transport { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 6px; }
+.sp-transport .chip { font-size: 14px; }
+.practice-tools { min-width: 0; }
+.practice-tools summary { cursor: pointer; padding: 10px 14px; min-height: 44px; border-radius: 999px; background: rgba(255,255,255,.7); font-weight: 800; font-size: 14px; }
+.practice-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+@media (min-width: 761px) {
+  .practice-tools[open] { display: contents; }
+  .practice-tools[open] summary { display: none; }
+  .practice-tools[open] .practice-options { display: contents; }
+}
+.song-progress { display: flex; flex-direction: column; gap: 3px; margin-left: auto; font-size: 13px; font-weight: 700; min-width: 90px; }
+.song-progress progress { width: 100%; }
+.learn-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.learn-nav { gap: 12px; flex-wrap: wrap; }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid #5333b2; outline-offset: 4px; }
+button:disabled { cursor: default; }
+.chip:disabled { opacity: .5; }
+.sp-bar .seg button { min-height: 44px; }
+#stage, #screen { min-width: 0; }
+.steps, .songs { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.parent { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+@media (max-width: 600px) {
+  .home-cur-badge { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .badge-title { width: 100%; }
+  .home-banner { padding: 10px 12px; }
+  .pills { gap: 4px; } .pill { font-size: 16px; padding: 6px 9px; }
+  #topbar { padding: 8px; gap: 6px; }
+  .dive-strip { flex-wrap: wrap; gap: 6px; font-size: 14px; border-radius: 16px; }
+  .dive-dots i { width: 10px; height: 10px; margin: 0 2px; }
+  .sp-bar { gap: 5px; } .sp-bar .seg button { padding: 6px 9px; font-size: 13px; }
+  .sp-transport { gap: 5px; } .sp-transport .chip { padding: 6px 10px; }
+  .activity.song { height: auto; min-height: 100%; }
+  .sp-stage { flex: none; height: 180px; }
+  .free-stage { flex: none; overflow: visible; }
+  .story-card { width: calc(100% - 16px); }
+  .s-home { padding-bottom: 54px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01s !important; animation-iteration-count: 1 !important; transition-duration: .01s !important; scroll-behavior: auto !important; }
+}

@@ -3,6 +3,8 @@ window.AX = window.AX || {};
 AX.ui = (function () {
   const $ = (s, r) => (r || document).querySelector(s);
   const overlay = () => $('#overlay');
+  const escape = (text) => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  let returnFocus = null;
   const stars = (n, max) => { max = max || 3; let s = ''; for (let i = 0; i < max; i++) s += `<span class="${i < n ? 'on' : ''}">★</span>`; return s; };
 
   function toast(msg, emoji) {
@@ -11,9 +13,20 @@ AX.ui = (function () {
   }
 
   function modal(html, buttons, cls) {
+    if (!overlay().classList.contains('open')) returnFocus = document.activeElement;
     const o = overlay(); o.innerHTML = '';
     const box = document.createElement('div'); box.className = 'modal ' + (cls || '');
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
     box.innerHTML = html + '<div class="btns"></div>';
+    const heading = box.querySelector('h2');
+    if (heading) { heading.id = 'dialog-title'; box.setAttribute('aria-labelledby', heading.id); }
+    box.addEventListener('keydown', e => {
+      if (e.key !== 'Tab') return;
+      const focusable = [...box.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')];
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
     const bw = box.querySelector('.btns');
     (buttons || []).forEach(b => {
       const bt = document.createElement('button'); bt.className = 'btn ' + (b.cls || ''); bt.innerHTML = b.label;
@@ -21,9 +34,16 @@ AX.ui = (function () {
       bw.appendChild(bt);
     });
     o.appendChild(box); o.classList.add('open');
+    document.querySelector('#app').inert = true;
+    const first = box.querySelector('input, button'); if (first) first.focus();
     return box;
   }
-  function close() { const o = overlay(); o.classList.remove('open'); o.innerHTML = ''; }
+  function close() {
+    const o = overlay(); o.classList.remove('open'); o.innerHTML = '';
+    document.querySelector('#app').inert = false;
+    if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+    returnFocus = null;
+  }
 
   function confetti(n) {
     const em = ['🫧', '⭐', '🌸', '💖', '🎵', '✨'];
@@ -61,7 +81,7 @@ AX.ui = (function () {
       const s = slides[i];
       card.innerHTML = `<h2>${s.title}</h2><p class="lead">${s.html}</p>${s.html2 || ''}<div class="visual"></div>` +
         `<div class="learn-nav"><div class="dots">${slides.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>` +
-        `<button class="btn primary big next">${i === slides.length - 1 ? 'Got it! ✅' : 'Next ➡'}</button></div>`;
+        `<div class="learn-buttons"><button class="btn previous" ${i === 0 ? 'disabled' : ''}>⬅ Back</button><button class="btn primary big next">${i === slides.length - 1 ? 'Got it! ✅' : 'Next ➡'}</button></div></div>`;
       const vis = $('.visual', card);
       if (s.staff) vis.insertAdjacentHTML('beforeend', `<div class="staff-wrap">${AX.staff.svg(s.staff.notes.map(AX.music.parse), s.staff)}</div>`);
       if (s.hand) {
@@ -75,6 +95,7 @@ AX.ui = (function () {
       }
       AX.Axie.say(s.axie || 'Take your time - tap anything you like! 🎹');
       $('.next', card).addEventListener('click', () => { AX.audio.ensure(); if (i < slides.length - 1) { i++; show(); } else onDone(); });
+      $('.previous', card).addEventListener('click', () => { if (i > 0) { i--; show(); } });
     }
     show();
     return { destroy() { if (piano) piano.destroy(); } };
@@ -95,5 +116,5 @@ AX.ui = (function () {
     return { destroy() {} };
   }
 
-  return { $, stars, toast, modal, close, confetti, results, learnCard, warmup };
+  return { $, escape, stars, toast, modal, close, confetti, results, learnCard, warmup };
 })();

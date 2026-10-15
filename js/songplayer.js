@@ -11,16 +11,28 @@ AX.SongPlayer = function (root, song, opts) {
   let speed = 1, lyrMode = S.lyrics || 'words', showFingers = opts.perform ? false : S.fingers !== false;
   let running = false, raf = 0, dead = false, idx = 0, mistakes = 0, wrong = 0, nextIdx = 0, t0 = 0, scroll = -4, curTok = -1, lastBeat = -99, countText = '', done = false;
   const notes = song.notes, n = notes.length;
+  const beatsPerBar = (song.timeSig || [4, 4])[0];
+  let paused = false, pausedAt = 0;
+  let hintUntil = 0;
+  const timers = new Set();
+  function later(fn, ms) {
+    const timer = setTimeout(() => { timers.delete(timer); if (!dead) fn(); }, ms);
+    timers.add(timer);
+  }
+  function clearTimers() { timers.forEach(clearTimeout); timers.clear(); }
 
   root.innerHTML = `<div class="activity song">
     <div class="sp-bar">
       <div class="seg modes"><button data-mode="listen">👂 Listen</button><button data-mode="sing">🎤 Sing</button><button data-mode="play">🎹 Play</button></div>
+      <details class="practice-tools" ${window.matchMedia('(min-width: 761px)').matches ? 'open' : ''}><summary>⚙️ Practice tools</summary><div class="practice-options">
       <div class="seg view-modes"><button data-view="sheet">🎼 Sheet Music</button><button data-view="highway">🎹 Highway</button></div>
       <div class="seg speed"><button data-speed="0.6" title="Practice tempo">🐢 Slow</button><button data-speed="0.8" title="Moderate">🐟 Med</button><button data-speed="1" title="Performance tempo">🐬 Normal</button></div>
       <div class="seg lyr"><button data-lyr="words">Words</button><button data-lyr="solfege">Do Re Mi</button><button data-lyr="names">A B C</button></div>
       <button class="chip" data-act="fingers"></button>
       <button class="chip" data-act="mic">🎤 Real piano</button>
+      </div></details>
     </div>
+    <div class="sp-transport"><button class="chip" data-act="pause" disabled>⏸ Pause</button><button class="chip" data-act="restart">↻ Start over</button><button class="chip" data-act="hint" hidden>👂 Hear this note</button><label class="song-progress"><span></span><progress max="${n}" value="0" aria-label="Song progress"></progress></label></div>
     <div class="sp-lyrics"></div>
     <div class="sp-stage">
       <div class="sp-sheet"><div class="score-container"></div></div>
@@ -61,7 +73,9 @@ AX.SongPlayer = function (root, song, opts) {
     // Auto-scroll score smoothly so active note is centered
     if (rendered.activeX > 0) {
       const containerW = sheetWrap.clientWidth;
-      const targetScroll = Math.max(0, rendered.activeX - containerW * 0.45);
+      const svg = scoreBox.querySelector('svg');
+      const scale = svg ? svg.getBoundingClientRect().width / rendered.totalWidth : 1;
+      const targetScroll = Math.max(0, rendered.activeX * scale - containerW * 0.45);
       sheetWrap.scrollTo({ left: targetScroll, behavior: 'smooth' });
     }
   }
@@ -120,11 +134,11 @@ AX.SongPlayer = function (root, song, opts) {
 
   /* ---- player state & loop ---- */
   function stopAll() {
-    running = false; cancelAnimationFrame(raf); done = false; piano.clearMarks();
+    running = false; paused = false; cancelAnimationFrame(raf); clearTimers(); done = false; piano.silence(); piano.clearMarks();
     AX.Axie.setMood('idle'); countEl.textContent = '';
   }
   function reset() {
-    stopAll(); idx = 0; mistakes = 0; wrong = 0; nextIdx = 0; curTok = -1; scroll = mode === 'play' ? notes[0].start : -4; shownLine = -1;
+    stopAll(); idx = 0; mistakes = 0; wrong = 0; nextIdx = 0; curTok = -1; scroll = mode === 'play' ? notes[0].start : -beatsPerBar; shownLine = -1;
     goBtn.style.display = ''; goBtn.textContent = mode === 'play' ? "▶ Let's play!" : "▶ Let's go!";
     renderLyrics(true); updateScore(); updateUI(); drawHighway();
     const t = {
@@ -136,6 +150,15 @@ AX.SongPlayer = function (root, song, opts) {
     if (mode === 'play') markTarget();
   }
   function updateUI() {
+    $('.activity.song').dataset.paused = String(paused);
+    const count = mode === 'play' ? idx : nextIdx;
+    $('.song-progress progress').value = count;
+    $('.song-progress span').textContent = `${count} / ${n} notes`;
+    $('[data-act="pause"]').disabled = !running && !paused;
+    $('[data-act="pause"]').textContent = paused ? '▶ Continue' : '⏸ Pause';
+    $('[data-act="pause"]').setAttribute('aria-pressed', String(paused));
+    $('[data-act="hint"]').hidden = mode !== 'play';
+    $('[data-act="hint"]').disabled = done;
     root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
     root.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === viewMode));
     root.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === speed));
@@ -156,34 +179,47 @@ AX.SongPlayer = function (root, song, opts) {
   function start() {
     AX.audio.ensure(); goBtn.style.display = 'none';
     if (mode === 'play') {
-      running = true; AX.Axie.say('Read the note on the staff and play it on the keys! ✨'); loop(); return;
+      running = true; updateUI(); AX.Axie.say('Read the note on the staff and play it on the keys! ✨'); loop(); return;
     }
-    running = true; nextIdx = 0; lastBeat = -99; t0 = performance.now(); loop();
+    running = true; nextIdx = 0; lastBeat = -99; t0 = performance.now(); updateUI(); loop();
+  }
+  function pause() {
+    if (!running) return;
+    paused = true; running = false; pausedAt = performance.now();
+    cancelAnimationFrame(raf); clearTimers(); piano.silence();
+    countEl.textContent = ''; AX.Axie.say('Take a breath. Your place is saved right here. 🫧'); updateUI();
+  }
+  function resume() {
+    if (!paused) return;
+    AX.audio.ensure(); t0 += performance.now() - pausedAt;
+    paused = false; running = true;
+    AX.Axie.say(mode === 'play' ? 'Ready when you are! Find the next glowing note. 🎹' : 'Let’s carry on from where we paused. 🎶');
+    updateUI(); loop();
   }
   function loop() {
-    if (dead) return;
+    if (dead || !running) return;
     if (mode === 'play') {
       scroll += ((idx < n ? notes[idx].start : notes[n - 1].start + notes[n - 1].beats) - scroll) * 0.18;
     } else if (running) {
-      const b = (performance.now() - t0) / 1000 / beatSec() - 4; scroll = b;
+      const b = (performance.now() - t0) / 1000 / beatSec() - beatsPerBar; scroll = b;
       const ib = Math.floor(b);
       if (ib !== lastBeat && ib < 0) {
-        lastBeat = ib; AX.audio.sfx.click(ib === -4); countEl.textContent = String(ib + 5);
+        lastBeat = ib; AX.audio.sfx.click(ib === -beatsPerBar); countEl.textContent = String(ib + beatsPerBar + 1);
       }
       if (b >= 0) countEl.textContent = '';
       if (mode === 'sing' && ib >= 0 && ib !== lastBeat) {
-        lastBeat = ib; AX.audio.sfx.click(ib % 4 === 0);
+        lastBeat = ib; AX.audio.sfx.click(ib % beatsPerBar === 0);
       }
       while (nextIdx < n && b >= notes[nextIdx].start) {
         const nt = notes[nextIdx];
         piano.mark(nt.m, { cls: 'target', finger: showFingers ? nt.f : 0 });
         piano.playNote(nt.m, { dur: nt.beats * beatSec() * 0.92, gain: mode === 'sing' ? 0.55 : 1 });
-        setTimeout(() => piano.clearMarks(), Math.max(150, nt.beats * beatSec() * 900));
-        curTok = nt.idx; renderLyrics(); updateScore(); AX.Axie.setMood('sing'); nextIdx++;
+        later(() => piano.clearMarks(), Math.max(150, nt.beats * beatSec() * 900));
+        curTok = nt.idx; renderLyrics(); updateScore(); AX.Axie.setMood('sing'); nextIdx++; updateUI();
       }
       if (b > notes[n - 1].start + notes[n - 1].beats + 0.3) { finishTimed(); }
     }
-    drawHighway(); raf = requestAnimationFrame(loop);
+    drawHighway(); if (running) raf = requestAnimationFrame(loop);
   }
   function finishTimed() {
     running = false; AX.Axie.setMood('happy', 2500); AX.Axie.bounce(); piano.clearMarks();
@@ -194,22 +230,26 @@ AX.SongPlayer = function (root, song, opts) {
       AX.Axie.say('Nice listening! Now tap <b>Sing</b> or <b>Play</b>! 🎶');
     }
     goBtn.style.display = ''; goBtn.textContent = '↻ Play Again';
+    updateUI();
   }
   const hints = ['Check the sheet music and glowing key!', 'Take your time — accuracy builds speed. 🐢', 'Look at the staff line and finger number.', 'Almost there! Try the glowing key.'];
   piano.onNote = (m, src) => {
     if (mode !== 'play' || !running || done || dead) return;
+    if (src === 'mic' && performance.now() < hintUntil) return;
     const t = notes[idx];
     const ok = src === 'mic' ? M.pc(m) === M.pc(t.m) : m === t.m;
     if (ok) {
       piano.flash(m, 'good', 350); wrong = 0; curTok = idx; idx++;
       renderLyrics(); updateScore(); AX.Axie.setMood('happy', 600);
-      if (idx >= n) { running = false; done = true; setTimeout(finishPlay, 500); } else markTarget();
+      if (idx >= n) { running = false; done = true; cancelAnimationFrame(raf); later(finishPlay, 500); } else markTarget();
+      updateUI();
     } else {
       mistakes++; wrong++; piano.flash(m, 'bad', 400);
       AX.Axie.say(wrong >= 2 ? `Look for note <b>${M.name(t.m)}</b> (Finger <b>${t.f}</b>)!` : hints[Math.floor(Math.random() * hints.length)]);
     }
   };
   function finishPlay() {
+    if (dead || !done) return;
     const allow = Math.max(2, Math.round(n * 0.08));
     const stars = mistakes <= allow ? 3 : mistakes <= allow * 3 ? 2 : 1;
     piano.clearMarks(); goBtn.style.display = ''; goBtn.textContent = '↻ Play Again';
@@ -221,7 +261,13 @@ AX.SongPlayer = function (root, song, opts) {
   root.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
     viewMode = b.dataset.view; S.viewMode = viewMode; AX.store.save(); updateUI(); updateScore(); drawHighway();
   }));
-  root.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => { speed = +b.dataset.speed; updateUI(); }));
+  root.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => {
+    const now = paused ? pausedAt : performance.now();
+    const elapsedBeats = (now - t0) / 1000 / beatSec();
+    speed = +b.dataset.speed;
+    if (running || paused) t0 = now - elapsedBeats * beatSec() * 1000;
+    updateUI();
+  }));
   root.querySelectorAll('[data-lyr]').forEach(b => b.addEventListener('click', () => { lyrMode = b.dataset.lyr; S.lyrics = lyrMode; AX.store.save(); shownLine = -1; renderLyrics(true); updateScore(); updateUI(); }));
   $('[data-act="fingers"]').addEventListener('click', () => { showFingers = !showFingers; S.fingers = showFingers; AX.store.save(); updateUI(); updateScore(); if (mode === 'play' && running) markTarget(); });
   $('[data-act="mic"]').addEventListener('click', async () => {
@@ -229,7 +275,17 @@ AX.SongPlayer = function (root, song, opts) {
     updateUI();
   });
   goBtn.addEventListener('click', () => { if (goBtn.textContent.indexOf('Again') >= 0 || running) reset(); start(); });
+  $('[data-act="pause"]').addEventListener('click', () => paused ? resume() : pause());
+  $('[data-act="restart"]').addEventListener('click', reset);
+  $('[data-act="hint"]').addEventListener('click', () => {
+    if (idx >= n || dead) return;
+    hintUntil = performance.now() + 1200;
+    piano.playNote(notes[idx].m, { dur: 0.7 });
+    AX.Axie.say('Listen, hum it, then find it on the piano. Asking for help keeps all your stars! 👂');
+  });
+  const visibility = () => { if (document.hidden) pause(); };
+  document.addEventListener('visibilitychange', visibility);
 
   reset();
-  this.destroy = function () { dead = true; cancelAnimationFrame(raf); piano.destroy(); AX.Axie.setMood('idle'); if (AX.input.micOn && !opts.keepMic) AX.input.stopMic(); };
+  this.destroy = function () { dead = true; clearTimers(); cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', visibility); piano.destroy(); AX.Axie.setMood('idle'); if (AX.input.micOn && !opts.keepMic) AX.input.stopMic(); };
 };

@@ -7,7 +7,7 @@
 
   /* =============== progress =============== */
   const lessonDone = (l) => l.steps.every(st => (S.get().steps[st.id] || 0) >= 1);
-  const isUnlocked = (i) => S.get().settings.unlockAll || i === 0 || lessonDone(AX.lessons[i - 1]);
+  const isUnlocked = (i) => S.get().settings.unlockAll || i <= 0 || lessonDone(AX.lessons[i - 1]);
   const currentLessonIndex = () => AX.lessons.findIndex(l => !lessonDone(l));
   const lessonStars = (l) => l.steps.reduce((a, st) => a + (S.get().steps[st.id] || 0), 0);
 
@@ -48,8 +48,10 @@
 
   /* =============== navigation =============== */
   const ACTIVITY = new Set(['step', 'dive', 'freeplay', 'song']);
+  const practicing = () => document.visibilityState === 'visible' && !$('#overlay').classList.contains('open') && !screenEl.querySelector('[data-paused="true"]');
   function go(name, params) {
     U.close();
+    document.querySelectorAll('.confetti').forEach(el => el.remove());
     if (cleanup) { try { cleanup(); } catch (e) { console.error(e); } cleanup = null; }
     current = { name, params: params || {} };
     screenEl.innerHTML = ''; screenEl.className = 'screen s-' + name; document.body.dataset.screen = name;
@@ -110,35 +112,40 @@
   const screens = {};
 
   screens.home = (root) => {
-    setTitle("Axie's Piano Academy", "Young Pianist Edition · Little Boulanger Method & 24 Levels");
+    setTitle("Axie's Piano Academy", "Listen, sing, play · One little adventure at a time");
     const st = S.get(), td = S.todayInfo(), streak = S.streak();
     const hour = new Date().getHours();
     const hi = hour < 12 ? 'Good morning' : hour < 17 ? 'Hi' : 'Good evening';
-    AX.Axie.say(`${hi}, <b>${st.name}</b>! ${td.acts > 0 ? 'You already practiced today - amazing! 🌟' : streak > 0 ? `You have a ${streak}-day streak! Keep it going! 🔥` : 'Ready to make some music? 🎶'}`);
-    const doneToday = td.acts >= 3;
+    AX.Axie.say(`${hi}, <b>${U.escape(st.name)}</b>! ${td.acts > 0 ? 'You already practiced today - amazing! 🌟' : streak > 0 ? `You have a ${streak}-day streak! Keep it going! 🔥` : 'Ready to make some music? 🎶'}`);
+    const doneToday = (td.dives || 0) > 0;
     const ci = currentLessonIndex();
     const curLesson = AX.lessons[ci >= 0 ? ci : AX.lessons.length - 1];
     const curNum = (ci >= 0 ? ci : AX.lessons.length - 1) + 1;
+    const completed = curLesson.steps.filter(step => st.steps[step.id] >= 1).length;
     root.innerHTML = `<div class="home-banner">
       <div class="home-cur-badge">
         <span class="badge-num">Level ${curNum} of 24</span>
-        <span class="badge-title"><b>${curLesson.emoji} ${curLesson.title}</b> · ${curLesson.blurb}</span>
+        <span class="badge-title"><b>${curLesson.emoji} ${curLesson.title}</b><small>${completed} of ${curLesson.steps.length} activities complete</small><progress max="${curLesson.steps.length}" value="${completed}" aria-label="Lesson progress"></progress></span>
       </div>
-      <button class="btn small primary resume-btn" data-go="resume">Resume ➡</button>
+      <button class="btn small primary resume-btn" data-go="resume">${completed ? 'Continue' : 'Let’s begin'} ➡</button>
     </div>
     <div class="home-grid">
-      <button class="tile big dive" data-go="dive"><span class="ti">🤿</span><b>Today's Dive</b><small>${doneToday ? '✅ 20-min Boulanger practice completed!' : '20-minute daily practice quest'}</small></button>
-      <button class="tile" data-go="map"><span class="ti">🗺️</span><b>Adventure Map</b><small>24 Levels · 4 Boulanger Phases</small></button>
+      <button class="tile big dive" data-go="dive"><span class="ti">🤿</span><b>${dive ? 'Continue your Dive' : "Today's Dive"}</b><small>${dive ? `${dive.i} of ${dive.plan.length} activities complete` : doneToday ? '✅ Dive complete! Want another splash?' : 'A little splash or a bigger adventure'}</small></button>
+      <button class="tile" data-go="map"><span class="ti">🗺️</span><b>Adventure Map</b><small>24 musical places to explore</small></button>
       <button class="tile" data-go="songbook"><span class="ti">🎼</span><b>Songbook</b><small>${AX.songs.list.length} Pieces · Sheet Music & Sing</small></button>
-      <button class="tile" data-go="freeplay"><span class="ti">🎹</span><b>Free Play</b><small>Chords, rhythms & Cantus Firmus</small></button>
+      <button class="tile" data-go="freeplay"><span class="ti">🎹</span><b>Free Play</b><small>Make up a tiny musical story</small></button>
       <button class="tile" data-go="closet"><span class="ti">👒</span><b>Axie's Closet</b><small>Dress up Axie with pearls</small></button>
       <button class="tile" data-go="stickers"><span class="ti">🏅</span><b>Stickers</b><small>${st.stickers.length} / ${STICKERS.length} Unlocked</small></button>
     </div><button class="gear" id="gear" aria-label="Grown-ups">⚙️</button>`;
     root.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => {
       AX.audio.ensure();
       AX.audio.sfx.pop();
-      if (b.dataset.go === 'dive') startDive();
-      else if (b.dataset.go === 'resume') go('lesson', { id: curLesson.id, back: { name: 'home' } });
+      if (b.dataset.go === 'dive') { if (dive) go('dive'); else go('divePlan'); }
+      else if (b.dataset.go === 'resume') {
+        const next = curLesson.steps.find(step => !st.steps[step.id]);
+        if (next) go('step', { lessonId: curLesson.id, stepId: next.id, back: { name: 'lesson', params: { id: curLesson.id, back: { name: 'home' } } } });
+        else go('lesson', { id: curLesson.id, back: { name: 'home' } });
+      }
       else go(b.dataset.go);
     }));
     $('#gear', root).addEventListener('click', () => parentGate());
@@ -180,9 +187,14 @@
     const l = AX.lessons.find(x => x.id === p.lessonId), step = l.steps.find(x => x.id === p.stepId);
     setTitle(step.title);
     const inst = runStep(root, step, {
-      after: (r) => U.results({ stars: step.type === 'learn' || step.type === 'warmup' ? 3 : r.stars || 0, pearls: r.pearls, stickers: r.stickers, buttons: [
+      after: (r) => {
+        const next = l.steps.find(st => !S.get().steps[st.id]);
+        U.results({ stars: r.stars, pearls: r.pearls, stickers: r.stickers,
+        note: next ? `Up next: ${next.title}` : 'You finished this lesson! Take a stretch and celebrate. 🌟', buttons: [
         { label: '🔁 Again', fn: () => go('step', p) },
-        { label: 'Back to lesson ➡', cls: 'primary', fn: () => go(p.back.name, p.back.params) }] })
+        { label: 'Lesson map', fn: () => go(p.back.name, p.back.params) },
+        { label: next ? 'Next activity ➡' : 'Adventure Map 🗺️', cls: 'primary', fn: () => next ? go('step', { ...p, stepId: next.id }) : go('map') }] });
+      }
     });
     // results need real stars
     return () => inst && inst.destroy && inst.destroy();
@@ -208,11 +220,22 @@
   };
 
   screens.freeplay = (root) => {
-    setTitle('Free Play'); AX.Axie.say('Play anything you like! Try making up your own song or improvising over Axie’s Cantus Firmus. 🎹');
+    setTitle('Free Play'); AX.Axie.say('You are the composer! Try a story idea, or play anything you like. There are no wrong notes here. 🎹');
     root.innerHTML = `<div class="activity song"><div class="sp-bar"><div class="seg lbls"><button data-l="none">No labels</button><button data-l="c">Cs</button><button data-l="names">A B C</button><button data-l="solfege">Do Re Mi</button></div>
-      <button class="chip" id="cantus">🎻 Cantus Firmus</button>
+      <button class="chip" id="cantus">🎻 Play with Axie</button>
       <button class="chip" id="rec">⏺ Record</button><button class="chip" id="play" disabled>▶ Play it back</button></div>
-      <div class="free-stage"><div class="free-hint">🎶 Tap the keys! 🎶</div></div><div class="sp-piano"></div></div>`;
+      <div class="free-stage"><div class="story-card"><span class="story-emoji" aria-hidden="true"></span><h2 class="story-title"></h2><p class="story-prompt"></p><button class="btn small" id="story-next">✨ Another idea</button><small>Your music, your rules. Try recording your story!</small></div></div><div class="sp-piano"></div></div>`;
+    const stories = [
+      ['🐟', 'A little fish says hello', 'Play three notes for “hel-lo, friend!” Then answer with three different notes.'],
+      ['🌧️', 'Raindrops on the pond', 'Try a few high notes like tiny raindrops. Leave quiet spaces between them.'],
+      ['🐢', 'Turtle and butterfly', 'Make a slow tune for a turtle. Now play it faster for a butterfly!'],
+      ['🌙', 'Axie’s sleepy song', 'Make a gentle tune with C, D and E. Finish on C and let it rest.'],
+      ['🏔️', 'Up the bubble mountain', 'Let your tune climb higher, then float back down. Where is its highest note?']
+    ];
+    let story = 0;
+    const showStory = () => { const [emoji, title, prompt] = stories[story]; $('.story-emoji', root).textContent = emoji; $('.story-title', root).textContent = title; $('.story-prompt', root).textContent = prompt; };
+    $('#story-next', root).addEventListener('click', () => { story = (story + 1) % stories.length; showStory(); });
+    showStory();
     const piano = new AX.Piano($('.sp-piano', root), { from: 48, to: 84, labels: 'c' });
     let rec = false, tape = [], t0 = 0, timers = [], lastBounce = 0;
     let cantusOn = false, cantusTimer = null, cantusStep = 0;
@@ -235,7 +258,7 @@
       $('#cantus', root).classList.toggle('on', cantusOn);
       if (cantusOn) {
         cantusStep = 0;
-        AX.Axie.say("I'm playing the walking bassline (*Cantus Firmus*)! Improvise your own melody on top — that's a Nadia Boulanger Mini-Invention! 🎻✨");
+        AX.Axie.say("I'll play the low notes. You make up a tune above them! Try the white keys and listen to our music together. 🎻✨");
         playCantusLoop();
       } else {
         clearTimeout(cantusTimer);
@@ -244,7 +267,7 @@
     });
     $('#rec', root).addEventListener('click', () => {
       rec = !rec; $('#rec', root).textContent = rec ? '⏹ Stop' : '⏺ Record'; $('#rec', root).classList.toggle('on', rec);
-      if (rec) { tape = []; t0 = performance.now(); AX.Axie.say('Recording... play your song! 🎙️'); }
+      if (rec) { timers.forEach(clearTimeout); timers = []; $('#play', root).disabled = true; tape = []; t0 = performance.now(); AX.Axie.say('Recording... play your song! 🎙️'); }
       else { $('#play', root).disabled = !tape.length; if (tape.length) AX.Axie.say('Press <b>Play it back</b> and I\'ll play your song! 🎶'); }
     });
     $('#play', root).addEventListener('click', () => {
@@ -294,13 +317,13 @@
 
   /* =============== Today's Dive (the daily routine) =============== */
   let dive = null;
-  const warmupStep = { id: 'warmup-daily', type: 'warmup', icon: '🙌', title: 'Wiggle Warm-Up', set: 'boulanger' };
+  const warmupStep = { id: 'warmup-daily', type: 'warmup', icon: '🙌', title: 'Wiggle Warm-Up', set: 'pond' };
   function buildDive() {
     const st = S.get(), ci = currentLessonIndex();
     const unlocked = AX.lessons.filter((l, i) => isUnlocked(i));
     const flat = []; unlocked.forEach(l => l.steps.forEach(s => flat.push(s)));
     const got = (s) => st.steps[s.id] || 0;
-    const plan = [{ step: warmupStep, label: 'Boulanger Warm-Up' }]; const used = new Set(['warmup-daily']);
+    const plan = [{ step: warmupStep, label: 'Wiggle Warm-Up' }]; const used = new Set(['warmup-daily']);
     const add = (s, label) => { if (s && !used.has(s.id)) { used.add(s.id); plan.push({ step: s, label }); } };
     const cur = ci >= 0 ? AX.lessons[ci] : null;
     if (cur) cur.steps.filter(s => got(s) === 0 && s.type !== 'song').slice(0, 2).forEach(s => add(s, s.type === 'learn' ? 'Learn something new' : 'Practice game'));
@@ -316,14 +339,24 @@
     if (plan.length < 4) { const g = flat.filter(s => s.type !== 'learn' && !used.has(s.id)); add(g[0], 'Bonus round'); }
     return plan;
   }
-  function startDive() { dive = { plan: buildDive(), i: 0, start: Date.now(), secs0: S.todayInfo().secs }; AX.audio.sfx.chime(); go('dive'); }
+  screens.divePlan = (root) => {
+    setTitle('Choose your Dive'); AX.Axie.say('A small splash counts, too! Choose your adventure for today. 🫧');
+    const full = buildDive(), short = full.slice(0, 3);
+    const choices = [[short, '🫧', 'Little Splash', 'Three little activities, at your own pace.']];
+    if (full.length > short.length) choices.push([full, '🤿', 'Deep Dive', 'A longer mix of learning and practice.']);
+    root.innerHTML = `<div class="dive-choices">${choices.map(([plan, emoji, title, desc], i) => `<section class="card"><span class="choice-emoji">${emoji}</span><h2>${title}</h2><p>${desc}</p><ol>${plan.map(item => `<li>${item.step.title}</li>`).join('')}</ol><button class="btn primary" data-dive="${i}">Let’s dive! · ${plan.length} activities</button></section>`).join('')}</div><p class="dive-reassurance">Need a break? Go Home and continue your Dive during this visit.</p>`;
+    root.querySelectorAll('[data-dive]').forEach(b => b.addEventListener('click', () => startDive(+b.dataset.dive === 0 ? short : full)));
+  };
+  function startDive(plan) { dive = { plan: plan || buildDive(), i: 0, secs: 0 }; AX.audio.ensure(); AX.audio.sfx.chime(); go('dive'); }
   screens.dive = (root) => {
     if (!dive) return startDive();
     if (dive.i >= dive.plan.length) return go('diveDone');
     const item = dive.plan[dive.i]; setTitle(`🤿 Dive: ${item.label}`);
-    root.innerHTML = `<div class="dive-strip"><div class="dive-dots">${dive.plan.map((p, k) => `<i class="${k < dive.i ? 'done' : k === dive.i ? 'now' : ''}"></i>`).join('')}</div><span class="dive-time">⏱ 0:00</span></div><div class="dive-body"></div>`;
+    root.innerHTML = `<div class="dive-strip"><span>Activity ${dive.i + 1} of ${dive.plan.length}</span><div class="dive-dots" aria-hidden="true">${dive.plan.map((p, k) => `<i class="${k < dive.i ? 'done' : k === dive.i ? 'now' : ''}"></i>`).join('')}</div><span class="dive-time"></span></div><div class="dive-body"></div>`;
     const body = $('.dive-body', root);
-    const tm = setInterval(() => { const s = Math.floor((Date.now() - dive.start) / 1000); const el = $('.dive-time', root); if (el) el.textContent = `⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
+    const showTime = () => { $('.dive-time', root).textContent = `⏱ ${Math.floor(dive.secs / 60)}:${String(dive.secs % 60).padStart(2, '0')}`; };
+    showTime();
+    const tm = setInterval(() => { if (practicing()) dive.secs++; showTime(); }, 1000);
     const inst = runStep(body, item.step, {
       after: (r, stars) => U.results({ stars, pearls: r.pearls, stickers: r.stickers, buttons: [
         { label: '🔁 Again', fn: () => go('dive') },
@@ -332,12 +365,14 @@
     return () => { clearInterval(tm); inst && inst.destroy && inst.destroy(); };
   };
   screens.diveDone = (root) => {
+    if (!dive) return go('home');
     setTitle('Dive complete!'); const st = S.get();
-    const mins = Math.max(1, Math.round((Date.now() - (dive ? dive.start : Date.now())) / 60000));
-    st.flags.dives++; S.logActivity(); S.addPearls(15); const stk = checkStickers(); S.save(); updatePills();
+    const mins = Math.max(1, Math.round(dive.secs / 60));
+    st.flags.dives++; const today = S.todayInfo(); today.dives = (today.dives || 0) + 1;
+    S.logActivity(); S.addPearls(15); const stk = checkStickers(); S.save(); updatePills();
     AX.audio.sfx.fanfare(); U.confetti(70); AX.Axie.setMood('happy', 6000); AX.Axie.bounce();
-    AX.Axie.say(`You completed Today's Boulanger Dive in ${mins} minute${mins > 1 ? 's' : ''}! <b>${S.streak()}-day streak</b> 🔥 +15 🫧 pearls!`);
-    root.innerHTML = `<div class="card center"><h2>🎉 Dive Complete! 🎉</h2><p class="lead">Practice makes progress, ${st.name}!</p><p class="earn">+15 🫧 pearls</p>${stk.map(s => `<p class="earn">${s.emoji} New sticker: <b>${s.name}</b></p>`).join('')}<p>Tell a grown-up what your favorite part was!</p><button class="btn primary big" id="hm">Home 🏠</button></div>`;
+    AX.Axie.say(`You made music for about ${mins} minute${mins > 1 ? 's' : ''}! Time to stretch your fingers. +15 🫧 pearls!`);
+    root.innerHTML = `<div class="card center"><h2>🎉 Dive Complete! 🎉</h2><p class="lead">Practice makes progress, ${U.escape(st.name)}!</p><p class="earn">+15 🫧 pearls</p>${stk.map(s => `<p class="earn">${s.emoji} New sticker: <b>${s.name}</b></p>`).join('')}<p>Tell a grown-up what your favorite part was!</p><button class="btn primary big" id="hm">Home 🏠</button></div>`;
     $('#hm', root).addEventListener('click', () => { dive = null; go('home'); });
     dive = null;
   };
@@ -372,8 +407,8 @@
 
       <section class="card"><h3>Lessons</h3><table>${lessonRows}</table></section>
       <section class="card"><h3>Settings</h3>
-        <label>Her name <input class="inp" id="pn" value="${st.name}"></label>
-        <label>Axolotl's name <input class="inp" id="an" value="${st.axieName}"></label>
+        <label>Her name <input class="inp" id="pn" value="${U.escape(st.name)}"></label>
+        <label>Axolotl's name <input class="inp" id="an" value="${U.escape(st.axieName)}"></label>
         <label>Volume <input type="range" id="vol" min="0.1" max="1" step="0.05" value="${st.settings.volume}"></label>
         <label class="row"><input type="checkbox" id="unl" ${st.settings.unlockAll ? 'checked' : ''}> Unlock all lessons (skip ahead)</label>
         <div class="row"><button class="btn small" id="midi">🎹 Connect MIDI keyboard</button><button class="btn small" id="mic">🎤 Test real-piano listening</button></div>
@@ -402,7 +437,7 @@
   /* =============== boot =============== */
   function firstRun() {
     const st = S.get();
-    U.modal(`<h2>Welcome to the pond! 🦎</h2><p>Hi! I'm an axolotl and I'm going to learn piano with you!</p><label>What's your name?<input class="inp" id="n1" value="${st.name}"></label><label>What should you call me?<input class="inp" id="n2" value="${st.axieName}"></label>`,
+    U.modal(`<h2>Welcome to the pond! 🦎</h2><p>Hi! I'm an axolotl and I'm going to learn piano with you!</p><label>What's your name?<input class="inp" id="n1" value="${U.escape(st.name)}"></label><label>What should you call me?<input class="inp" id="n2" value="${U.escape(st.axieName)}"></label>`,
       [{ label: "Let's go! 🎹", cls: 'primary', fn: (box) => { st.name = box.querySelector('#n1').value.trim() || 'Ayana'; st.axieName = box.querySelector('#n2').value.trim() || 'Axie'; st.firstRun = false; S.save(); AX.audio.ensure(); go('home'); } }], 'welcome');
   }
   function bubbles() { const b = $('.bubbles'); for (let i = 0; i < 14; i++) { const s = document.createElement('i'); s.style.left = Math.random() * 100 + '%'; const z = 10 + Math.random() * 40; s.style.width = s.style.height = z + 'px'; s.style.animationDuration = 12 + Math.random() * 18 + 's'; s.style.animationDelay = -Math.random() * 20 + 's'; b.appendChild(s); } }
@@ -410,12 +445,12 @@
   AX.Axie.mount($('#axie-pane'));
   bubbles(); updatePills();
   // practice-time tracking (only counts on activity screens while the page is visible)
-  setInterval(() => { if (document.visibilityState === 'visible' && ACTIVITY.has(current.name)) S.addSeconds(1); }, 1000);
+  setInterval(() => { if (ACTIVITY.has(current.name) && practicing()) S.addSeconds(1); }, 1000);
   if (S.get().settings.midi) AX.input.enableMidi();
   go('home');
   // handy deep links, e.g. index.html#map  #freeplay  #step/L3-hunt  #song/hcb
   const hash = location.hash.slice(1).split('/');
-  if (hash[0] === 'dive') startDive();
+  if (hash[0] === 'dive') go('divePlan');
   else if (hash[0] === 'step') { const l = AX.lessons.find(x => x.steps.some(s => s.id === hash[1])); if (l) go('step', { lessonId: l.id, stepId: hash[1], back: { name: 'home' } }); }
   else if (hash[0] === 'song' && AX.songs.byId[hash[1]]) go('song', { songId: hash[1], back: { name: 'home' } });
   else if (screens[hash[0]] && ['map', 'songbook', 'freeplay', 'closet', 'stickers'].includes(hash[0])) go(hash[0]);

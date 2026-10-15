@@ -12,6 +12,7 @@ AX.Piano = function (container, opt) {
   const wW = 100 / whites.length;
   const el = document.createElement('div'); el.className = 'piano';
   const keys = {}, rects = {}, held = {}, midiVoices = {};
+  const demoVoices = new Set();
 
   function mkKey(m, cls, left, width) {
     const k = document.createElement('div');
@@ -65,7 +66,11 @@ AX.Piano = function (container, opt) {
   // programmatic note (demo playback): visual + sound for a fixed length
   self.playNote = function (m, o) {
     o = o || {}; down(m);
-    if (opt.sound && !o.silent) AX.audio.noteOn(m, { dur: o.dur || 0.5, gain: o.gain == null ? 1 : o.gain, vel: 0.75 });
+    if (opt.sound && !o.silent) {
+      const voice = AX.audio.noteOn(m, { dur: o.dur || 0.5, gain: o.gain == null ? 1 : o.gain, vel: 0.75 });
+      demoVoices.add(voice);
+      setTimeout(() => demoVoices.delete(voice), (o.dur || 0.5) * 1000 + 300);
+    }
     setTimeout(() => up(m), Math.max(120, (o.dur || 0.5) * 1000));
   };
   // MIDI keyboard / microphone events
@@ -94,10 +99,15 @@ AX.Piano = function (container, opt) {
 
   self.setLabels(opt.labels);
   AX.input.active = self;
+  self.silence = function () {
+    demoVoices.forEach(v => v.release()); demoVoices.clear();
+    Object.keys(midiVoices).forEach(m => { midiVoices[m].release(); delete midiVoices[m]; });
+    Object.keys(held).forEach(id => { if (held[id].v) held[id].v.release(); delete held[id]; });
+    Object.keys(keys).forEach(up);
+  };
   self.destroy = function () {
     window.removeEventListener('pointerup', release);
     if (AX.input.active === self) AX.input.active = null;
-    Object.keys(midiVoices).forEach(m => midiVoices[m].release());
-    Object.keys(held).forEach(id => { if (held[id].v) held[id].v.release(); });
+    self.silence();
   };
 };
