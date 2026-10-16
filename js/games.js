@@ -39,12 +39,33 @@ AX.games = (function () {
   /* ---------------- Note Hunt ---------------- */
   function hunt(root, cfg, done) {
     cfg = Object.assign({ rounds: 8, from: 60, to: 76, labels: 'none' }, cfg);
-    root.innerHTML = '<div class="activity game"><div class="g-hud"><span class="g-round"></span><span class="g-streak"></span></div><div class="g-stage"><div class="g-card"><div class="g-prompt"></div></div></div><div class="g-piano"></div></div>';
+    root.innerHTML = '<div class="activity game"><div class="g-hud"><span class="g-round"></span><span class="g-streak"></span></div><div class="g-stage"><div class="g-card staffcard"><div class="g-prompt"></div><div class="staff-wrap hunt-staff"></div></div></div><div class="g-piano"></div></div>';
     const piano = new AX.Piano(root.querySelector('.g-piano'), { from: cfg.from, to: cfg.to, labels: cfg.labels });
     const prompt = root.querySelector('.g-prompt');
+    const staffEl = root.querySelector('.hunt-staff');
     let r = 0, mistakes = 0, wrong = 0, target = null, last = null, streak = 0, lock = false, dead = false;
     const exact = () => /\d/.test(target);
     const isTarget = (m) => (exact() ? m === M.parse(target) : M.name(m) === target);
+
+    function getStaffTarget() {
+      if (exact()) {
+        const m = M.parse(target);
+        const clef = cfg.clef || (m < 60 ? 'bass' : 'treble');
+        return { midi: m, clef };
+      }
+      const isBass = cfg.clef === 'bass' || (cfg.from < 60 && cfg.to <= 60);
+      const clef = cfg.clef || (isBass ? 'bass' : 'treble');
+      const letter = target.replace(/\d/, '');
+      const midi = M.parse(letter + (isBass ? '3' : '4'));
+      return { midi, clef };
+    }
+
+    function renderStaff(active = false) {
+      if (!staffEl || !target) return;
+      const st = getStaffTarget();
+      staffEl.innerHTML = AX.staff.svg([st.midi], { clef: st.clef, labels: true, active: active ? 0 : undefined });
+    }
+
     function next() {
       if (dead) return; r++;
       if (r > cfg.rounds) return finish();
@@ -52,6 +73,7 @@ AX.games = (function () {
       target = pickOf(cfg.pool, last); last = target; wrong = 0; lock = false; piano.clearMarks();
       const letter = target.replace(/\d/, '');
       prompt.innerHTML = `Find <span class="big-letter">${letter}</span>`;
+      renderStaff(false);
       AX.Axie.say(`Can you find <b>${letter}</b>? ${exact() ? '(Look low on the piano!)' : ''}`);
       AX.Axie.setMood('idle');
     }
@@ -63,6 +85,7 @@ AX.games = (function () {
       if (lock || dead) return;
       if (src === 'mic' ? M.pc(m) === M.pc(M.parse(exact() ? target : target + '4')) : isTarget(m)) {
         lock = true; streak++; piano.flash(m, 'good', 600); AX.audio.sfx.pop(); AX.Axie.cheer(cheer());
+        renderStaff(true);
         root.querySelector('.g-streak').textContent = streak >= 3 ? `🔥 ${streak} in a row!` : '';
         setTimeout(next, 800);
       } else {

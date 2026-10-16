@@ -123,7 +123,7 @@ button { font-family: inherit; color: inherit; cursor: pointer; }
 .big-letter { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--coral); color: #fff; margin-left: .2em; animation: pop .4s; }
 .g-piano, .sp-piano { height: clamp(150px, 30vh, 260px); flex: none; padding: 0 4px 4px; }
 .staffcard { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 26px; }
-.staff-wrap { width: min(520px, 80vw); } .staff-wrap.big { width: min(560px, 88%); } .staff-svg { width: 100%; height: auto; background: #fff; border-radius: 16px; }
+.staff-wrap { width: min(520px, 80vw); } .staff-wrap.big { width: min(560px, 88%); } .staff-wrap.hunt-staff { width: min(280px, 65vw); } .hunt-staff .staff-svg { max-height: 125px; } .staff-svg { width: 100%; height: auto; background: #fff; border-radius: 16px; }
 .hand-wrap { width: min(300px, 60vw); margin: 0 auto; } .hand-wrap.big { width: min(420px, 70vw); } .hand-svg { width: 100%; height: auto; overflow: visible; }
 .h-skin { fill: #ffd9b8; stroke: #e8b48c; stroke-width: 3; }
 .finger { cursor: pointer; } .finger.pressed rect, .finger.glow rect { fill: #fff3a8; } .finger.pressed, .finger.glow { transform: translateY(-8px); transition: transform .1s; }
