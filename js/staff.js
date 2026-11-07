@@ -137,13 +137,15 @@ AX.staff = (function () {
 
       // Color scheme
       let noteColor = '#1e293b';
-      if (isActive) noteColor = '#ff4f7b';
+      if (isActive) noteColor = '#0b756d';
       else if (isPast) noteColor = '#94a3b8';
 
-      // Active glow / highlight box
+      // Active glow / highlight box - Underwater bubble glow inspired by the reef mockup
       if (isActive) {
-        s += `<rect x="${x - 18}" y="${yOf(8) - 14}" width="36" height="${yOf(0) - yOf(8) + 40}" rx="10" fill="rgba(255, 107, 139, 0.16)"/>`;
-        s += `<circle cx="${x}" cy="${y}" r="20" fill="none" stroke="#ff4f7b" stroke-width="3" opacity="0.8"><animate attributeName="r" values="16;24;16" dur="1.2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.2s" repeatCount="indefinite"/></circle>`;
+        s += `<rect x="${x - 18}" y="${yOf(8) - 14}" width="36" height="${yOf(0) - yOf(8) + 40}" rx="12" fill="rgba(127, 243, 224, 0.22)"/>`;
+        s += `<circle cx="${x}" cy="${y}" r="22" fill="none" stroke="#2bc4b4" stroke-width="3.5" opacity="0.9"><animate attributeName="r" values="18;26;18" dur="1.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0.35;0.9" dur="1.4s" repeatCount="indefinite"/></circle>`;
+        s += `<circle cx="${x - 8}" cy="${y - 18}" r="3.5" fill="rgba(127, 243, 224, 0.7)"><animate attributeName="cy" values="${y - 18};${y - 28};${y - 18}" dur="1.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.7;0.2;0.7" dur="1.8s" repeatCount="indefinite"/></circle>`;
+        s += `<circle cx="${x + 9}" cy="${y - 24}" r="2.5" fill="rgba(127, 243, 224, 0.6)"><animate attributeName="cy" values="${y - 24};${y - 34};${y - 24}" dur="1.5s" repeatCount="indefinite"/></circle>`;
       }
 
       // Notehead

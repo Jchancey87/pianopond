@@ -293,3 +293,7 @@ When reviewing this codebase for potential improvements, critique, or refactorin
 * **Evaluation Questions:**
   * Is audio output latency minimized on lower-end mobile tablets (`latencyHint: 'interactive'`)?
   * Are hit targets on the virtual piano keys wide enough for small fingers without causing accidental adjacent note touches?
+
+## Piano sound credit
+
+The piano uses the **Salamander Grand Piano** (Yamaha C5) recorded by Alexander Holm, licensed CC-BY 3.0 (https://archive.org/details/SalamanderGrandPianoV3). Samples are the pre-trimmed MP3 set from the Tone.js project (MIT), stored in `audio/piano/`. If they fail to load, the app falls back to the built-in synth piano.

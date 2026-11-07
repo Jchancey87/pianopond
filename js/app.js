@@ -112,7 +112,7 @@
   const screens = {};
 
   screens.home = (root) => {
-    setTitle("Axie's Piano Academy", "Listen, sing, play · One little adventure at a time");
+    setTitle("Axie's Piano Academy", "Your reef journey · Pick a quest and dive in");
     const st = S.get(), td = S.todayInfo(), streak = S.streak();
     const hour = new Date().getHours();
     const hi = hour < 12 ? 'Good morning' : hour < 17 ? 'Hi' : 'Good evening';
@@ -154,7 +154,7 @@
 
   screens.map = (root) => {
     setTitle('Adventure Map');
-    AX.Axie.say('Pick a lily pad! Each lesson has a little lesson and fun games. 🪷');
+    AX.Axie.say('Choose your next stop on the reef! Each one has a lesson and challenges. 🌊');
     const ci = currentLessonIndex();
     root.innerHTML = '<div class="map"></div>';
     const map = $('.map', root);

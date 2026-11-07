@@ -1,4 +1,4 @@
-/* Audio: a soft synth piano, sound effects, MIDI keyboard input, and optional microphone pitch detection. */
+/* Audio: a sampled grand piano (Salamander, with synth fallback), sound effects, MIDI keyboard input, and optional microphone pitch detection. */
 window.AX = window.AX || {};
 AX.audio = (function () {
   let ctx = null, master = null, room = null, hammer = null;
@@ -23,13 +23,14 @@ AX.audio = (function () {
         for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12));
       }
       room.buffer = impulse;
-      const wet = ctx.createGain(); wet.gain.value = 0.09;
+      const wet = ctx.createGain(); wet.gain.value = 0.14;
       room.connect(wet); wet.connect(master);
       hammer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.018), ctx.sampleRate);
       const data = hammer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.003));
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    loadSamples();
     return ctx;
   }
   function setVolume(v) { if (master) master.gain.setTargetAtTime(v, ctx.currentTime, 0.015); }
@@ -37,7 +38,7 @@ AX.audio = (function () {
 
   // Decaying partials, a quiet hammer attack and velocity-dependent brightness.
   // No sample downloads; one shared room and at most 24 held/scheduled voices.
-  function noteOn(midi, opt) {
+  function synthNote(midi, opt) {
     opt = opt || {};
     const c = ensure(); if (!c) return { release() {} };
     if (voices.size >= MAX_VOICES) voices.values().next().value.release(true);
@@ -105,6 +106,68 @@ AX.audio = (function () {
     return voice;
   }
 
+  /* ---- Sampled piano: Salamander Grand Piano (Alexander Holm, CC-BY 3.0), a sample every minor third ---- */
+  const SAMPLE_NAMES = ['A0','C1','Ds1','Fs1','A1','C2','Ds2','Fs2','A2','C3','Ds3','Fs3','A3','C4','Ds4','Fs4','A4','C5','Ds5','Fs5','A5','C6','Ds6','Fs6','A6','C7','Ds7','Fs7','A7','C8'];
+  const SEMI = { C: 0, Ds: 3, Fs: 6, A: 9 };
+  const samples = []; // { midi, buf }
+  let loading = false;
+  function loadSamples() {
+    if (loading || !ctx) return; loading = true;
+    SAMPLE_NAMES.forEach(name => {
+      const midi = 12 * (Number(name.slice(-1)) + 1) + SEMI[name.slice(0, -1)];
+      fetch('audio/piano/' + name + '.mp3').then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(ab => new Promise((ok, no) => ctx.decodeAudioData(ab, ok, no)))
+        .then(buf => { samples.push({ midi, buf }); samples.sort((a, b) => a.midi - b.midi); })
+        .catch(() => {});
+    });
+  }
+  function nearestSample(midi) {
+    let best = null;
+    for (const s of samples) if (!best || Math.abs(s.midi - midi) < Math.abs(best.midi - midi)) best = s;
+    return best;
+  }
+  // Plays the nearest recorded note pitch-shifted into place. Falls back to the synth until samples are ready.
+  function noteOn(midi, opt) {
+    opt = opt || {};
+    const c = ensure(); if (!c) return { release() {} };
+    const s = samples.length >= 20 ? nearestSample(midi) : null;
+    if (!s || Math.abs(s.midi - midi) > 3) return synthNote(midi, opt);
+    if (voices.size >= MAX_VOICES) voices.values().next().value.release(true);
+    const t0 = Math.max(c.currentTime, opt.when || 0);
+    const vel = Math.max(0.01, Math.min(1, opt.vel == null ? 0.8 : opt.vel));
+    const gain = Math.max(0, opt.gain == null ? 1 : opt.gain);
+    const f = AX.music.freq(midi);
+    const decay = Math.max(1.5, Math.min(8, 6 * Math.pow(2, (48 - midi) / 36)));
+    const timed = opt.dur != null;
+    const duration = timed ? Math.max(0.05, opt.dur) : decay * 1.6;
+    const releaseTime = Math.max(0.12, Math.min(0.35, 0.3 - (midi - 48) * 0.002));
+    const src = c.createBufferSource(); src.buffer = s.buf;
+    src.playbackRate.value = Math.pow(2, (midi - s.midi) / 12);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.3;
+    lp.frequency.value = Math.min(c.sampleRate * 0.45, f * (4 + vel * 14) + 1200); // softer touch = mellower tone
+    const out = c.createGain(), pan = c.createStereoPanner();
+    pan.pan.value = Math.max(-0.35, Math.min(0.35, (midi - 60) / 90));
+    const peak = Math.max(0.0001, 0.8 * Math.pow(vel, 1.2) * gain);
+    out.gain.setValueAtTime(peak, t0);
+    // Held keys keep ringing but fade slowly, like a real string.
+    out.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * (timed ? 0.5 : 0.04)), t0 + duration);
+    const end = t0 + duration + releaseTime;
+    out.gain.exponentialRampToValueAtTime(0.0001, end);
+    src.connect(lp); lp.connect(out); out.connect(pan); pan.connect(master); pan.connect(room);
+    src.start(t0); src.stop(end + 0.05);
+    let released = false;
+    const voice = { release(steal) {
+      if (released) return; released = true; voices.delete(voice);
+      const t = c.currentTime, r = steal ? 0.025 : releaseTime;
+      out.gain.cancelScheduledValues(t);
+      out.gain.setValueAtTime(Math.max(0.0001, out.gain.value), t);
+      out.gain.exponentialRampToValueAtTime(0.0001, t + r);
+      try { src.stop(t + r + 0.03); } catch {}
+    } };
+    src.onended = () => { voices.delete(voice); src.disconnect(); lp.disconnect(); out.disconnect(); pan.disconnect(); };
+    voices.add(voice);
+    return voice;
+  }
   function tone(f, dur, o) {
     o = o || {};
     const c = ensure(); if (!c) return;
