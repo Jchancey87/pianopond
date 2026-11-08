@@ -1,7 +1,7 @@
 /* Audio: a sampled grand piano (Salamander, with synth fallback), sound effects, MIDI keyboard input, and optional microphone pitch detection. */
 window.AX = window.AX || {};
 AX.audio = (function () {
-  let ctx = null, master = null, room = null, hammer = null;
+  let ctx = null, master = null, hammer = null;
   const voices = new Set();
   const MAX_VOICES = 24;
   const vol = () => AX.store.get().settings.volume;
@@ -11,20 +11,11 @@ AX.audio = (function () {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC({ latencyHint: 'interactive' });
-      const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -12; comp.knee.value = 12; comp.ratio.value = 3;
-      master = ctx.createGain(); master.gain.value = vol();
-      master.connect(comp); comp.connect(ctx.destination);
-      // A small, shared soundboard/room tail. Generated locally, so it works offline.
-      room = ctx.createConvolver();
-      const impulse = ctx.createBuffer(2, Math.ceil(ctx.sampleRate * 0.65), ctx.sampleRate);
-      for (let channel = 0; channel < 2; channel++) {
-        const data = impulse.getChannelData(channel);
-        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12));
-      }
-      room.buffer = impulse;
-      const wet = ctx.createGain(); wet.gain.value = 0.14;
-      room.connect(wet); wet.connect(master);
+      master = ctx.createGain();
+      master.gain.value = vol();
+      // Direct connection to destination bypasses compressor lookahead delay for lowest latency
+      master.connect(ctx.destination);
+
       hammer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.018), ctx.sampleRate);
       const data = hammer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.003));
@@ -37,7 +28,7 @@ AX.audio = (function () {
   const now = () => (ctx ? ctx.currentTime : 0);
 
   // Decaying partials, a quiet hammer attack and velocity-dependent brightness.
-  // No sample downloads; one shared room and at most 24 held/scheduled voices.
+  // Fallback when sample files are still loading or unavailable.
   function synthNote(midi, opt) {
     opt = opt || {};
     const c = ensure(); if (!c) return { release() {} };
@@ -55,7 +46,7 @@ AX.audio = (function () {
     lp.frequency.setValueAtTime(Math.min(c.sampleRate * 0.45, f * (3 + vel * 7) + 600), t0);
     lp.frequency.exponentialRampToValueAtTime(Math.min(c.sampleRate * 0.4, f * 2.5 + 400), t0 + decay);
     pan.pan.value = Math.max(-0.35, Math.min(0.35, (midi - 60) / 90));
-    lp.connect(out); out.connect(pan); pan.connect(master); pan.connect(room);
+    lp.connect(out); out.connect(pan); pan.connect(master);
     const peak = Math.max(0.0001, 0.19 * Math.pow(vel, 1.5) * gain);
     const attack = 0.004 + (1 - vel) * 0.006;
     const levelAt = t => {
@@ -107,31 +98,71 @@ AX.audio = (function () {
   }
 
   /* ---- Sampled piano: Salamander Grand Piano (Alexander Holm, CC-BY 3.0), a sample every minor third ---- */
-  const SAMPLE_NAMES = ['A0','C1','Ds1','Fs1','A1','C2','Ds2','Fs2','A2','C3','Ds3','Fs3','A3','C4','Ds4','Fs4','A4','C5','Ds5','Fs5','A5','C6','Ds6','Fs6','A6','C7','Ds7','Fs7','A7','C8'];
+  // Prioritized from middle octaves outward so the core lesson range is ready first
+  const SAMPLE_NAMES = [
+    'C4','Ds4','Fs4','A4',
+    'C5','Ds5','Fs5','A5',
+    'C3','Ds3','Fs3','A3',
+    'C6','Ds6','Fs6','A6',
+    'C2','Ds2','Fs2','A2',
+    'C7','Ds7','Fs7','A7',
+    'C1','Ds1','Fs1','A1',
+    'A0','C8'
+  ];
   const SEMI = { C: 0, Ds: 3, Fs: 6, A: 9 };
   const samples = []; // { midi, buf }
   let loading = false;
+
+  // Trims MP3 encoder silence padding (~10-25ms) directly from the decoded buffer for instant attack
+  function trimBuffer(c, buf) {
+    const d0 = buf.getChannelData(0);
+    const d1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+    const threshold = 0.003;
+    const maxScan = Math.min(d0.length, Math.floor(buf.sampleRate * 0.06));
+    let cut = 0;
+    for (let i = 0; i < maxScan; i++) {
+      if (Math.abs(d0[i]) > threshold || (d1 && Math.abs(d1[i]) > threshold)) {
+        cut = Math.max(0, i - 16);
+        break;
+      }
+    }
+    if (cut === 0) return buf;
+    const newLen = buf.length - cut;
+    const newBuf = c.createBuffer(buf.numberOfChannels, newLen, buf.sampleRate);
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      newBuf.getChannelData(ch).set(buf.getChannelData(ch).subarray(cut));
+    }
+    return newBuf;
+  }
+
   function loadSamples() {
     if (loading || !ctx) return; loading = true;
     SAMPLE_NAMES.forEach(name => {
       const midi = 12 * (Number(name.slice(-1)) + 1) + SEMI[name.slice(0, -1)];
-      fetch('audio/piano/' + name + '.mp3').then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      fetch('audio/piano/' + name + '.mp3')
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
         .then(ab => new Promise((ok, no) => ctx.decodeAudioData(ab, ok, no)))
-        .then(buf => { samples.push({ midi, buf }); samples.sort((a, b) => a.midi - b.midi); })
+        .then(buf => {
+          const trimmed = trimBuffer(ctx, buf);
+          samples.push({ midi, buf: trimmed });
+          samples.sort((a, b) => a.midi - b.midi);
+        })
         .catch(() => {});
     });
   }
+
   function nearestSample(midi) {
     let best = null;
     for (const s of samples) if (!best || Math.abs(s.midi - midi) < Math.abs(best.midi - midi)) best = s;
     return best;
   }
-  // Plays the nearest recorded note pitch-shifted into place. Falls back to the synth until samples are ready.
+
+  // Plays the nearest recorded note pitch-shifted into place.
   function noteOn(midi, opt) {
     opt = opt || {};
     const c = ensure(); if (!c) return { release() {} };
-    const s = samples.length >= 20 ? nearestSample(midi) : null;
-    if (!s || Math.abs(s.midi - midi) > 3) return synthNote(midi, opt);
+    const s = nearestSample(midi);
+    if (!s || Math.abs(s.midi - midi) > 5) return synthNote(midi, opt);
     if (voices.size >= MAX_VOICES) voices.values().next().value.release(true);
     const t0 = Math.max(c.currentTime, opt.when || 0);
     const vel = Math.max(0.01, Math.min(1, opt.vel == null ? 0.8 : opt.vel));
@@ -153,7 +184,8 @@ AX.audio = (function () {
     out.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * (timed ? 0.5 : 0.04)), t0 + duration);
     const end = t0 + duration + releaseTime;
     out.gain.exponentialRampToValueAtTime(0.0001, end);
-    src.connect(lp); lp.connect(out); out.connect(pan); pan.connect(master); pan.connect(room);
+    // Direct routing to master: low latency, authentic acoustic tone without convolver lag
+    src.connect(lp); lp.connect(out); out.connect(pan); pan.connect(master);
     src.start(t0); src.stop(end + 0.05);
     let released = false;
     const voice = { release(steal) {
@@ -192,6 +224,20 @@ AX.audio = (function () {
     talk() { for (let i = 0; i < 3; i++) tone(520 + Math.random() * 420, 0.07, { when: now() + i * 0.075, type: 'triangle', gain: 0.05 }); },
     fanfare() { [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => tone(AX.music.freq(m), 0.35, { when: now() + i * 0.08, type: 'triangle', gain: 0.13 })); }
   };
+
+  // Warm up audio context on the very first touch/key anywhere on the page
+  if (typeof window !== 'undefined') {
+    const warmUp = () => {
+      ensure();
+      window.removeEventListener('pointerdown', warmUp, true);
+      window.removeEventListener('touchstart', warmUp, true);
+      window.removeEventListener('keydown', warmUp, true);
+    };
+    window.addEventListener('pointerdown', warmUp, true);
+    window.addEventListener('touchstart', warmUp, true);
+    window.addEventListener('keydown', warmUp, true);
+    setTimeout(() => { try { ensure(); } catch {} }, 100);
+  }
 
   return { ensure, setVolume, noteOn, tone, sfx, now };
 })();
